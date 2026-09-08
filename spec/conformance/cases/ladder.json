@@ -1,0 +1,129 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "ladder-1-before-2-unknown-route-beats-bad-key",
+      "description": "Compound fault: unroutable path and unknown key. Stage 1 answers. Nothing about keys is disclosed on an unknown route.",
+      "decision": "ADR-0004",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "no-such-endpoint"], "auth": { "key": "alice" } },
+          "expect": { "error": "unknown_route" }
+        }
+      ]
+    },
+    {
+      "name": "ladder-2-before-3-bad-signature-beats-forbidden",
+      "description": "Compound fault: corrupt signature on a resource the key may not touch. Stage 2 answers.",
+      "decision": "ADR-0004",
+      "steps": [
+        {
+          "request": { "method": "DELETE", "path": ["-", "buckets", "photos"], "auth": { "key": "revoked", "corrupt_signature": true } },
+          "expect": { "error": "unknown_key" }
+        }
+      ]
+    },
+    {
+      "name": "ladder-2-before-4-clock-skew-beats-invalid-bucket-name",
+      "description": "Compound fault: timestamp far outside the window and a bucket name that breaks the rule. Stage 2 answers and includes the server time.",
+      "decision": "ADR-0004",
+      "steps": [
+        {
+          "request": { "method": "PUT", "path": ["-", "buckets", "NO"], "auth": { "key": "alice", "time_offset_seconds": 3600 } },
+          "expect": { "error": "clock_skew", "json": { "error": { "code": "clock_skew" } } }
+        }
+      ]
+    },
+    {
+      "name": "ladder-4-before-6-invalid-bucket-name-beats-not-found",
+      "description": "Compound fault: invalid name on a bucket that does not exist. Stage 4 answers; existence is never consulted for an invalid name.",
+      "decision": "ADR-0004",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "buckets", "NO"], "auth": { "key": "alice" } },
+          "expect": { "error": "invalid_bucket_name" }
+        }
+      ]
+    },
+    {
+      "name": "ladder-4-before-5-invalid-part-number-beats-body",
+      "description": "Compound fault: part number 0 with a body. Stage 4 answers before any body byte is read. With expect_continue the runner can assert no body was sent, if it can observe that.",
+      "decision": "ADR-0004",
+      "steps": [
+        {
+          "name": "initiate",
+          "request": {
+            "method": "POST", "path": ["-", "uploads"], "auth": { "key": "alice" },
+            "body": { "json": { "bucket": "empty", "key": "big.bin", "part_size": 5242880 } }
+          },
+          "expect": { "status": 201 },
+          "capture": { "session": "/id" }
+        },
+        {
+          "name": "part-zero",
+          "request": {
+            "method": "PUT", "path": ["-", "uploads", "{{session}}", "parts", "0"], "auth": { "key": "alice" },
+            "body": { "bytes": { "seed": 7, "length": 5242880 } }, "expect_continue": true
+          },
+          "expect": { "error": "invalid_part_number" }
+        },
+        {
+          "name": "abort",
+          "request": { "method": "DELETE", "path": ["-", "uploads", "{{session}}"], "auth": { "key": "alice" } },
+          "expect": { "status": 204 }
+        }
+      ]
+    },
+    {
+      "name": "ladder-6-upload-incomplete-lists-missing",
+      "description": "Complete with a gap. Stage 6 answers with the missing part numbers.",
+      "decision": "ADR-0001",
+      "steps": [
+        {
+          "name": "initiate",
+          "request": {
+            "method": "POST", "path": ["-", "uploads"], "auth": { "key": "alice" },
+            "body": { "json": { "bucket": "empty", "key": "gap.bin", "part_size": 5242880 } }
+          },
+          "expect": { "status": 201 },
+          "capture": { "session": "/id" }
+        },
+        {
+          "name": "part-1",
+          "request": {
+            "method": "PUT", "path": ["-", "uploads", "{{session}}", "parts", "1"], "auth": { "key": "alice" },
+            "body": { "bytes": { "seed": 8, "length": 5242880 } }
+          },
+          "expect": { "status": 200 }
+        },
+        {
+          "name": "part-3-out-of-order",
+          "request": {
+            "method": "PUT", "path": ["-", "uploads", "{{session}}", "parts", "3"], "auth": { "key": "alice" },
+            "body": { "bytes": { "seed": 8, "length": 1024 } }
+          },
+          "expect": { "status": 200 }
+        },
+        {
+          "name": "query-shows-1-and-3",
+          "request": { "method": "GET", "path": ["-", "uploads", "{{session}}"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "part_size": 5242880, "parts": [1, 3] } }
+        },
+        {
+          "name": "complete-with-gap",
+          "request": {
+            "method": "POST", "path": ["-", "uploads", "{{session}}", "complete"], "auth": { "key": "alice" },
+            "body": { "json": { "parts": 3 } }
+          },
+          "expect": { "error": "upload_incomplete", "json": { "error": { "details": { "missing": [2] } } } }
+        },
+        {
+          "name": "abort",
+          "request": { "method": "DELETE", "path": ["-", "uploads", "{{session}}"], "auth": { "key": "alice" } },
+          "expect": { "status": 204 }
+        }
+      ]
+    }
+  ]
+}

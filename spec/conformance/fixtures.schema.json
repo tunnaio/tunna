@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tunnaio/tunna/spec/conformance/fixtures.schema.json",
+  "title": "tunna conformance fixtures",
+  "description": "What a runner provisions in a fresh server before replaying cases. Provisioning happens through the harness, not through the wire, so cases can test the wire without depending on it.",
+  "type": "object",
+  "required": ["spec", "keys", "buckets", "bytes_generator"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "type": "string" },
+    "keys": {
+      "type": "object",
+      "description": "Fixture name → API key. Secrets here are test-only.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["id", "secret"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "secret": { "type": "string" },
+          "disabled": { "type": "boolean" },
+          "permissions": { "description": "Shape decided by the authorization ADR. Until then, runners treat every enabled key as unrestricted." }
+        }
+      }
+    },
+    "buckets": {
+      "type": "object",
+      "description": "Fixture name → bucket. The fixture name is also the bucket name unless 'name' overrides it.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "public": { "type": "boolean" },
+          "objects": {
+            "type": "array",
+            "description": "Pre-existing objects, provisioned before any step runs.",
+            "items": {
+              "type": "object",
+              "required": ["key"],
+              "additionalProperties": false,
+              "properties": {
+                "key": { "type": "string" },
+                "content_type": { "type": "string" },
+                "bytes": { "type": "object", "required": ["seed", "length"], "additionalProperties": false, "properties": {
+                  "seed": { "type": "integer" },
+                  "length": { "type": "integer", "minimum": 0 }
+                } },
+                "text": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "bytes_generator": {
+      "type": "object",
+      "required": ["algorithm", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "type": "string" },
+        "description": { "type": "string" },
+        "check": {
+          "type": "array",
+          "description": "Self-test: for each entry, the generator with this seed and length must produce bytes whose SHA-256 is the given value. A runner that fails these has the generator wrong.",
+          "items": { "type": "object", "required": ["seed", "length", "sha256"], "additionalProperties": false, "properties": {
+            "seed": { "type": "integer" },
+            "length": { "type": "integer" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          } }
+        }
+      }
+    }
+  }
+}

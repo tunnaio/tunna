@@ -1,0 +1,28 @@
+{
+  "spec": "0.1.0-draft",
+  "keys": {
+    "alice": { "id": "tk_alice", "secret": "test-secret-alice-not-real" },
+    "bob": { "id": "tk_bob", "secret": "test-secret-bob-not-real" },
+    "revoked": { "id": "tk_revoked", "secret": "test-secret-revoked-not-real", "disabled": true }
+  },
+  "buckets": {
+    "photos": {
+      "objects": [
+        { "key": "hello.txt", "content_type": "text/plain", "text": "hello, tunna\n" },
+        { "key": "2026/one.bin", "content_type": "application/octet-stream", "bytes": { "seed": 1, "length": 65536 } },
+        { "key": "2026/two.bin", "content_type": "application/octet-stream", "bytes": { "seed": 2, "length": 65536 } }
+      ]
+    },
+    "public-site": {
+      "public": true,
+      "objects": [
+        { "key": "index.html", "content_type": "text/html", "text": "<!doctype html><title>tunna</title>\n" }
+      ]
+    },
+    "empty": {}
+  },
+  "bytes_generator": {
+    "algorithm": "sha256-counter",
+    "description": "Byte i of the stream for seed s is byte (i mod 32) of SHA-256 of the 16-byte big-endian concatenation of s (8 bytes) and floor(i / 32) (8 bytes). Deterministic, cheap, and the same in every language with a SHA-256 in its standard library. The 'check' entries below are the oracle for a runner's implementation; they are filled in by the first runner and verified by the second."
+  }
+}

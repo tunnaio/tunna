@@ -1,0 +1,41 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "health-anonymous",
+      "description": "Liveness needs no credentials.",
+      "decision": "wire.md 3.5",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "health"], "auth": "none" },
+          "expect": { "status": 200, "json": { "status": "ok" } }
+        }
+      ]
+    },
+    {
+      "name": "health-bad-signature-still-fails",
+      "description": "An anonymous route still verifies credentials that are presented. ADR-0004: anonymous by declaration, not by absence of a signature.",
+      "decision": "ADR-0004",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "health"], "auth": { "key": "alice", "corrupt_signature": true } },
+          "expect": { "error": "bad_signature", "headers": { "WWW-Authenticate": "TUNNA1-HMAC-SHA256" } }
+        }
+      ]
+    },
+    {
+      "name": "version-reports-spec",
+      "description": "The version endpoint names the spec version the server conforms to.",
+      "decision": "spec/README.md",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "version"], "auth": "none" },
+          "expect": { "status": 200, "json": { "spec": "0.1.0-draft" } }
+        }
+      ]
+    }
+  ]
+}

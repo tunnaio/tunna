@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tunnaio/tunna/spec/vectors/encoding.schema.json",
+  "title": "tunna percent-encoding vectors",
+  "description": "Oracles for the canonical encoding of path segments, whole paths, and query strings. An encoder passes when every case's output matches byte for byte.",
+  "type": "object",
+  "required": ["spec", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "type": "string" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "input", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": ["segment", "path", "query"],
+            "description": "segment: input is one decoded path segment, expected is its encoding. path: input is a decoded path split into segments (array), expected is the canonical path. query: input is an array of [name, value] decoded pairs in any order, expected is the canonical query string."
+          },
+          "input": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } },
+              { "type": "array", "items": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 } }
+            ]
+          },
+          "expected": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

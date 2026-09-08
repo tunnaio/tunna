@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tunnaio/tunna/spec/conformance/conformance.schema.json",
+  "title": "tunna conformance case file",
+  "description": "One file holds related cases. A case is an ordered list of steps. Each step sends one request and checks the response. Values captured from a response are available to later steps as {{name}} substitutions in path segments, query values, headers and JSON bodies.",
+  "type": "object",
+  "required": ["spec", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "type": "string" },
+    "cases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "required": ["name", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "description": { "type": "string" },
+        "decision": { "type": "string", "description": "The ADR or wire.md section this case proves, for example ADR-0004 or wire.md 6.2." },
+        "fixtures": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Names from fixtures.json the runner must provision before this case. Default: all."
+        },
+        "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["request", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "request": { "$ref": "#/$defs/request" },
+        "expect": { "$ref": "#/$defs/expect" },
+        "capture": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "name → JSON pointer (RFC 6901) into the response body, or 'header:<Name>' for a response header. Captured values substitute {{name}} in later steps."
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": ["method", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "method": { "type": "string", "pattern": "^[A-Z]+$" },
+        "path": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Decoded path segments. The runner encodes them. {{name}} substitution applies."
+        },
+        "query": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 }
+        },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "auth": {
+          "description": "How the runner signs the request. 'none' sends no credentials. A key name signs in header form with that fixture key and the runner's clock. A presign object signs in presigned form.",
+          "oneOf": [
+            { "type": "string", "const": "none" },
+            { "type": "object", "required": ["key"], "additionalProperties": false, "properties": {
+              "key": { "type": "string" },
+              "signed_headers": { "type": "array", "items": { "type": "string" } },
+              "time_offset_seconds": { "type": "integer", "description": "Added to the runner's clock to produce the request timestamp. Use to provoke clock_skew." },
+              "corrupt_signature": { "type": "boolean", "description": "Flip a bit in the signature after computing it. Use to provoke bad_signature." }
+            } },
+            { "type": "object", "required": ["presign"], "additionalProperties": false, "properties": {
+              "presign": { "type": "object", "required": ["key", "expires_in_seconds"], "additionalProperties": false, "properties": {
+                "key": { "type": "string" },
+                "expires_in_seconds": { "type": "integer", "description": "Relative to the runner's clock. Negative to provoke presign_expired." },
+                "signed_headers": { "type": "array", "items": { "type": "string" } }
+              } }
+            } }
+          ]
+        },
+        "body": {
+          "description": "At most one form. 'json' is serialized by the runner. 'text' is sent as UTF-8. 'bytes' is a deterministic generated body: 'seed' and 'length' produce the same bytes in every runner via the generator defined in fixtures.json. 'hex' is literal bytes.",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "maxProperties": 1,
+          "properties": {
+            "json": {},
+            "text": { "type": "string" },
+            "hex": { "type": "string", "pattern": "^([0-9a-f]{2})*$" },
+            "bytes": { "type": "object", "required": ["seed", "length"], "additionalProperties": false, "properties": {
+              "seed": { "type": "integer" },
+              "length": { "type": "integer", "minimum": 0 }
+            } }
+          }
+        },
+        "expect_continue": { "type": "boolean", "description": "Send Expect: 100-continue. Runners that cannot control this may ignore it." }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "error": { "type": "string", "description": "Expected error code from errors.json. Implies the error body shape and the status from the table; a case may still state status explicitly." },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "oneOf": [ { "type": "string" }, { "type": "object", "required": ["present"], "properties": { "present": { "type": "boolean" } } } ] },
+          "description": "Header name → exact value, or {present: true|false}. Names are case-insensitive."
+        },
+        "json": { "description": "Subset match: every field given here must be present in the response body with this value. Arrays match exactly. Objects match by subset, recursively." },
+        "json_absent": { "type": "array", "items": { "type": "string" }, "description": "JSON pointers that must not resolve in the response body." },
+        "body_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 of the raw response body, for binary responses." },
+        "body_length": { "type": "integer", "minimum": 0 },
+        "body_empty": { "type": "boolean" },
+        "body_bytes": { "type": "object", "required": ["seed", "length"], "additionalProperties": false, "properties": {
+          "seed": { "type": "integer" },
+          "length": { "type": "integer", "minimum": 0 }
+        }, "description": "The body equals the generated bytes for this seed and length. Offsets are the concatenation of parts uploaded with the same seed." }
+      }
+    }
+  }
+}

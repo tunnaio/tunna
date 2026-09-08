@@ -1,0 +1,383 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "header-get-root",
+      "note": "Smallest possible request: GET / with nothing signed.",
+      "mode": "header",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "GET",
+        "path": []
+      },
+      "time": 1788912000,
+      "expected": {
+        "canonical": "TUNNA1\nGET\n/\n\n\n\n1788912000",
+        "signature": "1e2c9dcf5d1c84f394c0fc362eb7c905210a1b1d299945b11a3eff631b2f3e2a",
+        "authorization": "TUNNA1-HMAC-SHA256 key=tk_alice, headers=, sig=1e2c9dcf5d1c84f394c0fc362eb7c905210a1b1d299945b11a3eff631b2f3e2a"
+      }
+    },
+    {
+      "name": "header-get-object",
+      "note": "Plain object read.",
+      "mode": "header",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "GET",
+        "path": [
+          "photos",
+          "hello.txt"
+        ]
+      },
+      "time": 1788912000,
+      "expected": {
+        "canonical": "TUNNA1\nGET\n/photos/hello.txt\n\n\n\n1788912000",
+        "signature": "f4beaa4944db139cf2f0d90d57ae097e1f4e010cc072185d6a262ad6ce008be4",
+        "authorization": "TUNNA1-HMAC-SHA256 key=tk_alice, headers=, sig=f4beaa4944db139cf2f0d90d57ae097e1f4e010cc072185d6a262ad6ce008be4"
+      }
+    },
+    {
+      "name": "header-get-key-with-slash-space-unicode",
+      "note": "The key is one segment as far as the signer is concerned; its slash, space and non-ASCII are data.",
+      "mode": "header",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "GET",
+        "path": [
+          "photos",
+          "år 2026/bild #1.jpg"
+        ]
+      },
+      "time": 1788912000,
+      "expected": {
+        "canonical": "TUNNA1\nGET\n/photos/%C3%A5r%202026%2Fbild%20%231.jpg\n\n\n\n1788912000",
+        "signature": "6ef81d44eefca99dff58f0fce0a63927c63d1c515b2e30c987a52e4b8a15a733",
+        "authorization": "TUNNA1-HMAC-SHA256 key=tk_alice, headers=, sig=6ef81d44eefca99dff58f0fce0a63927c63d1c515b2e30c987a52e4b8a15a733"
+      }
+    },
+    {
+      "name": "header-list-sorted-query",
+      "note": "Query parameters given out of order; canonical form sorts by encoded name.",
+      "mode": "header",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "GET",
+        "path": [
+          "photos"
+        ],
+        "query": [
+          [
+            "prefix",
+            "2026/"
+          ],
+          [
+            "list",
+            ""
+          ],
+          [
+            "limit",
+            "10"
+          ],
+          [
+            "delimiter",
+            "/"
+          ]
+        ]
+      },
+      "time": 1788912000,
+      "expected": {
+        "canonical": "TUNNA1\nGET\n/photos\ndelimiter=%2F&limit=10&list=&prefix=2026%2F\n\n\n1788912000",
+        "signature": "09809f535d0e7ac34b5b84cbb57d24a9c8f8dfa0af79613f886655c495baa1e9",
+        "authorization": "TUNNA1-HMAC-SHA256 key=tk_alice, headers=, sig=09809f535d0e7ac34b5b84cbb57d24a9c8f8dfa0af79613f886655c495baa1e9"
+      }
+    },
+    {
+      "name": "header-repeated-and-empty-params",
+      "note": "Repeated names sort by value; empty values keep their =.",
+      "mode": "header",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "GET",
+        "path": [
+          "photos"
+        ],
+        "query": [
+          [
+            "k",
+            "b"
+          ],
+          [
+            "k",
+            ""
+          ],
+          [
+            "k",
+            "a"
+          ],
+          [
+            "list",
+            ""
+          ]
+        ]
+      },
+      "time": 1788912000,
+      "expected": {
+        "canonical": "TUNNA1\nGET\n/photos\nk=&k=a&k=b&list=\n\n\n1788912000",
+        "signature": "bb693bfbe91093cc19c97e86c4f24f6e3d46c0b985932ef5550b08ab41a2ce3e",
+        "authorization": "TUNNA1-HMAC-SHA256 key=tk_alice, headers=, sig=bb693bfbe91093cc19c97e86c4f24f6e3d46c0b985932ef5550b08ab41a2ce3e"
+      }
+    },
+    {
+      "name": "header-put-with-signed-checksum",
+      "note": "Body integrity via a signed checksum header. The checksum header name is a placeholder until the checksum ADR (wire.md section 8). The body itself is not an input.",
+      "mode": "header",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "PUT",
+        "path": [
+          "photos",
+          "new.bin"
+        ],
+        "headers": {
+          "Content-Type": "application/octet-stream",
+          "X-Tunna-Checksum": "crc32c=AAAAAA=="
+        },
+        "signed_headers": [
+          "X-Tunna-Checksum",
+          "Content-Type"
+        ]
+      },
+      "time": 1788912000,
+      "expected": {
+        "canonical": "TUNNA1\nPUT\n/photos/new.bin\n\ncontent-type;x-tunna-checksum\ncontent-type:application/octet-stream\nx-tunna-checksum:crc32c=AAAAAA==\n1788912000",
+        "signature": "f63ed1cd5bc51071e59e69803bcd865647fe9b78d75f14929a784f9249c96c3a",
+        "authorization": "TUNNA1-HMAC-SHA256 key=tk_alice, headers=content-type;x-tunna-checksum, sig=f63ed1cd5bc51071e59e69803bcd865647fe9b78d75f14929a784f9249c96c3a"
+      }
+    },
+    {
+      "name": "header-whitespace-and-case-normalized",
+      "note": "Header names are lowercased and sorted; values are trimmed and internal whitespace runs collapse to one space. Unsigned headers are ignored.",
+      "mode": "header",
+      "key": {
+        "id": "tk_bob",
+        "secret": "test-secret-bob-not-real"
+      },
+      "request": {
+        "method": "PUT",
+        "path": [
+          "photos",
+          "meta.txt"
+        ],
+        "headers": {
+          "X-Tunna-Meta-Title": "   Summer   holiday\t2026  ",
+          "CONTENT-TYPE": "text/plain; charset=utf-8",
+          "User-Agent": "not-signed/1.0"
+        },
+        "signed_headers": [
+          "x-tunna-meta-title",
+          "Content-Type"
+        ]
+      },
+      "time": 1788912000,
+      "expected": {
+        "canonical": "TUNNA1\nPUT\n/photos/meta.txt\n\ncontent-type;x-tunna-meta-title\ncontent-type:text/plain; charset=utf-8\nx-tunna-meta-title:Summer holiday 2026\n1788912000",
+        "signature": "b07e9ee5a0d76a98efd9f13c625ba1cc9f79f3179f0a2740ae8dd21456d8265d",
+        "authorization": "TUNNA1-HMAC-SHA256 key=tk_bob, headers=content-type;x-tunna-meta-title, sig=b07e9ee5a0d76a98efd9f13c625ba1cc9f79f3179f0a2740ae8dd21456d8265d"
+      }
+    },
+    {
+      "name": "header-post-json-body-not-signed",
+      "note": "Initiate upload. The JSON body does not enter the canonical request; two requests with different bodies and the same headers sign identically.",
+      "mode": "header",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "POST",
+        "path": [
+          "-",
+          "uploads"
+        ],
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "signed_headers": [
+          "content-type"
+        ]
+      },
+      "time": 1788912000,
+      "expected": {
+        "canonical": "TUNNA1\nPOST\n/-/uploads\n\ncontent-type\ncontent-type:application/json\n1788912000",
+        "signature": "f2c0b4faeca810db7ddb6dafb1ff79e7c0e7a79b8ad5cdb7848ce8cedc7ee926",
+        "authorization": "TUNNA1-HMAC-SHA256 key=tk_alice, headers=content-type, sig=f2c0b4faeca810db7ddb6dafb1ff79e7c0e7a79b8ad5cdb7848ce8cedc7ee926"
+      }
+    },
+    {
+      "name": "header-delete-control-plane",
+      "note": "Control-plane path under /-/.",
+      "mode": "header",
+      "key": {
+        "id": "tk_bob",
+        "secret": "test-secret-bob-not-real"
+      },
+      "request": {
+        "method": "DELETE",
+        "path": [
+          "-",
+          "buckets",
+          "empty"
+        ]
+      },
+      "time": 1788912059,
+      "expected": {
+        "canonical": "TUNNA1\nDELETE\n/-/buckets/empty\n\n\n\n1788912059",
+        "signature": "bfcfcb157fefc0894514f9992dda7a4efb4175f12ad9bf8137193156d47fba8f",
+        "authorization": "TUNNA1-HMAC-SHA256 key=tk_bob, headers=, sig=bfcfcb157fefc0894514f9992dda7a4efb4175f12ad9bf8137193156d47fba8f"
+      }
+    },
+    {
+      "name": "presign-get-object",
+      "note": "Presigned download, no signed headers. time is the absolute expiry. x-tunna-sig is appended after the canonical query.",
+      "mode": "presign",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "GET",
+        "path": [
+          "photos",
+          "hello.txt"
+        ]
+      },
+      "time": 1788915600,
+      "expected": {
+        "canonical": "TUNNA1\nGET\n/photos/hello.txt\nx-tunna-expires=1788915600&x-tunna-headers=&x-tunna-key=tk_alice\n\n\n1788915600",
+        "signature": "e3c93f42efea052e6f81bab81d6666381c6dfe70c21b72ce5e0b81dc901d8013",
+        "query": "x-tunna-expires=1788915600&x-tunna-headers=&x-tunna-key=tk_alice&x-tunna-sig=e3c93f42efea052e6f81bab81d6666381c6dfe70c21b72ce5e0b81dc901d8013"
+      }
+    },
+    {
+      "name": "presign-get-with-user-query",
+      "note": "User parameters and credential parameters sort together in the canonical query.",
+      "mode": "presign",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "GET",
+        "path": [
+          "photos",
+          "hello.txt"
+        ],
+        "query": [
+          [
+            "response-content-disposition",
+            "attachment; filename=\"hello.txt\""
+          ]
+        ]
+      },
+      "time": 1788915600,
+      "expected": {
+        "canonical": "TUNNA1\nGET\n/photos/hello.txt\nresponse-content-disposition=attachment%3B%20filename%3D%22hello.txt%22&x-tunna-expires=1788915600&x-tunna-headers=&x-tunna-key=tk_alice\n\n\n1788915600",
+        "signature": "d58871af511ab83075cdc0a91656986089a0e7e4f042be77f63561d1b7b3af29",
+        "query": "response-content-disposition=attachment%3B%20filename%3D%22hello.txt%22&x-tunna-expires=1788915600&x-tunna-headers=&x-tunna-key=tk_alice&x-tunna-sig=d58871af511ab83075cdc0a91656986089a0e7e4f042be77f63561d1b7b3af29"
+      }
+    },
+    {
+      "name": "presign-put-part-with-signed-content-type",
+      "note": "Presigned part upload with one signed header, as a browser would use it.",
+      "mode": "presign",
+      "key": {
+        "id": "tk_bob",
+        "secret": "test-secret-bob-not-real"
+      },
+      "request": {
+        "method": "PUT",
+        "path": [
+          "-",
+          "uploads",
+          "up_01J9X4",
+          "parts",
+          "3"
+        ],
+        "headers": {
+          "Content-Type": "application/octet-stream"
+        },
+        "signed_headers": [
+          "content-type"
+        ]
+      },
+      "time": 1788912900,
+      "expected": {
+        "canonical": "TUNNA1\nPUT\n/-/uploads/up_01J9X4/parts/3\nx-tunna-expires=1788912900&x-tunna-headers=content-type&x-tunna-key=tk_bob\ncontent-type\ncontent-type:application/octet-stream\n1788912900",
+        "signature": "877a409caafefe9109e49065a71b08938f2af449a071fa0a0cadf60e43ca5f09",
+        "query": "x-tunna-expires=1788912900&x-tunna-headers=content-type&x-tunna-key=tk_bob&x-tunna-sig=877a409caafefe9109e49065a71b08938f2af449a071fa0a0cadf60e43ca5f09"
+      }
+    },
+    {
+      "name": "presign-unicode-key",
+      "note": "Non-ASCII key in a presigned URL.",
+      "mode": "presign",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "GET",
+        "path": [
+          "photos",
+          "år 2026/bild #1.jpg"
+        ]
+      },
+      "time": 1788915600,
+      "expected": {
+        "canonical": "TUNNA1\nGET\n/photos/%C3%A5r%202026%2Fbild%20%231.jpg\nx-tunna-expires=1788915600&x-tunna-headers=&x-tunna-key=tk_alice\n\n\n1788915600",
+        "signature": "b4e9c1ad0f758cd8c3ef1537361d2bf17c95e41d606ea8cddeaaf9302322c45d",
+        "query": "x-tunna-expires=1788915600&x-tunna-headers=&x-tunna-key=tk_alice&x-tunna-sig=b4e9c1ad0f758cd8c3ef1537361d2bf17c95e41d606ea8cddeaaf9302322c45d"
+      }
+    },
+    {
+      "name": "presign-expiry-in-the-past-still-signs",
+      "note": "A signer signs whatever expiry it is given. Rejecting a past expiry is the server's job at stage 2 (presign_expired), not the signer's.",
+      "mode": "presign",
+      "key": {
+        "id": "tk_alice",
+        "secret": "test-secret-alice-not-real"
+      },
+      "request": {
+        "method": "GET",
+        "path": [
+          "photos",
+          "hello.txt"
+        ]
+      },
+      "time": 1788911999,
+      "expected": {
+        "canonical": "TUNNA1\nGET\n/photos/hello.txt\nx-tunna-expires=1788911999&x-tunna-headers=&x-tunna-key=tk_alice\n\n\n1788911999",
+        "signature": "57014aae05c5b9f557e1e40f9672d6922bb2ac53ce09e3f42bf03a71c06092b4",
+        "query": "x-tunna-expires=1788911999&x-tunna-headers=&x-tunna-key=tk_alice&x-tunna-sig=57014aae05c5b9f557e1e40f9672d6922bb2ac53ce09e3f42bf03a71c06092b4"
+      }
+    }
+  ]
+}

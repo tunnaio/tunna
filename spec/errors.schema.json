@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tunnaio/tunna/spec/errors.schema.json",
+  "title": "tunna error table",
+  "type": "object",
+  "required": ["spec", "stages", "errors"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "type": "string", "description": "Spec version this table belongs to." },
+    "stages": {
+      "type": "array",
+      "description": "The request processing ladder from ADR-0004, in order.",
+      "items": {
+        "type": "object",
+        "required": ["stage", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "stage": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "name": { "type": "string" }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "status", "stage", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Wire error code. Stable across patch and minor versions."
+          },
+          "status": { "type": "integer", "minimum": 400, "maximum": 599 },
+          "stage": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "description": { "type": "string" },
+          "details": {
+            "type": "object",
+            "description": "Structured fields the error's details object carries, name to type.",
+            "additionalProperties": { "type": "string", "enum": ["string", "integer", "boolean", "array"] }
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "Whether an SDK may retry the same request unchanged. Defaults to false."
+          }
+        }
+      }
+    }
+  }
+}

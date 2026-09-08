@@ -1,0 +1,30 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    { "name": "unreserved-untouched", "kind": "segment", "input": "AZaz09-._~", "expected": "AZaz09-._~" },
+    { "name": "space", "kind": "segment", "input": "a b", "expected": "a%20b", "note": "Never '+'. '+' is a query-form convention this spec does not use." },
+    { "name": "plus-is-encoded", "kind": "segment", "input": "a+b", "expected": "a%2Bb" },
+    { "name": "slash-inside-segment", "kind": "segment", "input": "a/b", "expected": "a%2Fb", "note": "A slash inside a segment is data. Slashes between segments are separators and are added by the path kind." },
+    { "name": "percent-itself", "kind": "segment", "input": "100%", "expected": "100%25" },
+    { "name": "already-encoded-is-data", "kind": "segment", "input": "a%20b", "expected": "a%2520b", "note": "Encode once. Input is decoded text; a literal percent sign is encoded." },
+    { "name": "reserved-sub-delims", "kind": "segment", "input": "!*'();:@&=+$,?#[]", "expected": "%21%2A%27%28%29%3B%3A%40%26%3D%2B%24%2C%3F%23%5B%5D" },
+    { "name": "uppercase-hex", "kind": "segment", "input": "é", "expected": "%C3%A9", "note": "Hex digits are uppercase." },
+    { "name": "euro-three-bytes", "kind": "segment", "input": "€", "expected": "%E2%82%AC" },
+    { "name": "emoji-four-bytes", "kind": "segment", "input": "🙂", "expected": "%F0%9F%99%82" },
+    { "name": "empty-segment", "kind": "segment", "input": "", "expected": "" },
+
+    { "name": "path-root", "kind": "path", "input": [], "expected": "/" },
+    { "name": "path-simple", "kind": "path", "input": ["bucket", "key"], "expected": "/bucket/key" },
+    { "name": "path-key-with-slash-data", "kind": "path", "input": ["bucket", "dir/file.txt"], "expected": "/bucket/dir%2Ffile.txt", "note": "Whether a key's slash is one segment or two is the router's choice; the encoder just encodes the segments it is given." },
+    { "name": "path-unicode-and-space", "kind": "path", "input": ["photos", "år 2026", "bild.jpg"], "expected": "/photos/%C3%A5r%202026/bild.jpg" },
+    { "name": "path-trailing-empty-segment", "kind": "path", "input": ["bucket", ""], "expected": "/bucket/" },
+
+    { "name": "query-empty", "kind": "query", "input": [], "expected": "" },
+    { "name": "query-single", "kind": "query", "input": [["list", ""]], "expected": "list=", "note": "A value-less parameter is written with '=' and an empty value." },
+    { "name": "query-sorted-by-name", "kind": "query", "input": [["prefix", "a"], ["limit", "10"], ["delimiter", "/"]], "expected": "delimiter=%2F&limit=10&prefix=a" },
+    { "name": "query-repeated-name-sorted-by-value", "kind": "query", "input": [["k", "b"], ["k", "a"]], "expected": "k=a&k=b" },
+    { "name": "query-sort-is-bytewise-on-encoded", "kind": "query", "input": [["b", "1"], ["B", "1"], ["a", "1"]], "expected": "B=1&a=1&b=1", "note": "Uppercase sorts before lowercase. Sort on the encoded form, bytewise." },
+    { "name": "query-encoded-name-and-value", "kind": "query", "input": [["na me", "v=1&2"]], "expected": "na%20me=v%3D1%262" },
+    { "name": "query-unicode-value", "kind": "query", "input": [["q", "öl"]], "expected": "q=%C3%B6l" }
+  ]
+}

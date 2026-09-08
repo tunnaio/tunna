@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tunnaio/tunna/spec/vectors/signing.schema.json",
+  "title": "tunna signing vectors",
+  "description": "Oracles for the canonical request and signature (ADR-0003, wire.md section 3). A signer passes when, for every case, it derives the expected canonical string and signature from the inputs. In header mode the runner derives X-Tunna-Date from 'time'; it is not listed in 'headers'. Test secrets only.",
+  "type": "object",
+  "required": ["spec", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "type": "string" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "mode", "key", "request", "time", "expected"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "note": { "type": "string" },
+          "mode": {
+            "type": "string",
+            "enum": ["header", "presign"],
+            "description": "header: time is the request timestamp and the output is an Authorization header. presign: time is the absolute expiry and the output is a query string."
+          },
+          "key": {
+            "type": "object",
+            "required": ["id", "secret"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "secret": { "type": "string", "description": "Test-only secret. Real secrets never appear in this repository." }
+            }
+          },
+          "request": {
+            "type": "object",
+            "required": ["method", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "method": { "type": "string", "pattern": "^[A-Z]+$" },
+              "path": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Decoded path segments. The signer encodes them per the encoding vectors."
+              },
+              "query": {
+                "type": "array",
+                "items": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 },
+                "description": "Decoded [name, value] pairs, any order, excluding the credential parameters that presign mode adds itself."
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "Request headers as sent, original case and whitespace. Only those named in signed_headers enter the canonical request."
+              },
+              "signed_headers": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Header names the client chose to sign, any case, any order."
+              }
+            }
+          },
+          "time": { "type": "integer", "description": "Unix seconds. Timestamp in header mode, expiry in presign mode." },
+          "expected": {
+            "type": "object",
+            "required": ["canonical", "signature"],
+            "additionalProperties": false,
+            "properties": {
+              "canonical": { "type": "string", "description": "The exact canonical request string, newline-joined." },
+              "signature": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "authorization": { "type": "string", "description": "header mode: the full Authorization header value." },
+              "query": { "type": "string", "description": "presign mode: the full canonical query string including the credential parameters and the signature, as it should appear in the URL." }
+            }
+          }
+        }
+      }
+    }
+  }
+}
