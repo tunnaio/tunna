@@ -123,7 +123,9 @@ and fails if they are bad.
 
 ## 4. Control plane
 
-All under `/-/`.
+All under `/-/`. A path that exists but not for the request's method answers
+`method_not_allowed` with an `Allow` header; a path that matches nothing
+answers `unknown_route`. Both use the JSON error body from section 9.
 
 | Method and path | Purpose | Auth |
 |-----------------|---------|------|

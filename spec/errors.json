@@ -10,7 +10,8 @@
   ],
   "errors": [
     { "code": "malformed_request", "status": 400, "stage": 1, "description": "The request line, path, query or a header the signature depends on could not be parsed. Also used when both header-form and presigned-form credentials are present." },
-    { "code": "unknown_route", "status": 404, "stage": 1, "description": "No endpoint matches the method and path." },
+    { "code": "unknown_route", "status": 404, "stage": 1, "description": "No endpoint matches the path." },
+    { "code": "method_not_allowed", "status": 405, "stage": 1, "description": "The path exists but not for this method. The response carries an Allow header listing the methods that do." },
 
     { "code": "unauthenticated", "status": 401, "stage": 2, "description": "No credentials on a route that requires them." },
     { "code": "unknown_key", "status": 401, "stage": 2, "description": "The key id does not exist or is disabled." },

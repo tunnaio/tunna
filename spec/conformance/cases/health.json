@@ -26,6 +26,30 @@
       ]
     },
     {
+      "name": "unknown-route-is-json",
+      "description": "An unmatched path answers with the JSON error body, not the HTTP library's plain-text default.",
+      "decision": "wire.md 4, wire.md 9",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "no-such-endpoint"], "auth": "none" },
+          "expect": { "error": "unknown_route", "headers": { "Content-Type": "application/json" } }
+        }
+      ]
+    },
+    {
+      "name": "wrong-method-is-json-with-allow",
+      "description": "A known path with an unsupported method answers method_not_allowed with an Allow header, in the JSON error body.",
+      "decision": "wire.md 4",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": { "method": "POST", "path": ["-", "health"], "auth": "none" },
+          "expect": { "error": "method_not_allowed", "headers": { "Allow": "GET, HEAD", "Content-Type": "application/json" } }
+        }
+      ]
+    },
+    {
       "name": "version-reports-spec",
       "description": "The version endpoint names the spec version the server conforms to.",
       "decision": "spec/README.md",
