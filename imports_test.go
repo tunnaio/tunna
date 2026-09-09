@@ -2,42 +2,117 @@ package tunna_test
 
 import (
 	"go/build"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// ADR-0005: the root package is the core. It imports nothing from this module
-// and nothing from the standard library that performs I/O. Types-only packages
-// such as io, context, time and errors are fine. Logging is not: the core
-// returns errors, adapters decide what to log.
-var forbiddenPrefixes = []string{
-	"os",
-	"net",
-	"database/sql",
-	"syscall",
-	"log",
-	"io/fs",
-	"github.com/tunnaio/tunna",
+// ADR-0005 import rules, enforced per package directory. "module" imports
+// are those under the module path; everything else must be standard library.
+//
+//   - root (tunna): no module imports; no stdlib I/O (os, net, database/sql,
+//     syscall, log, io/fs). io, context, time, errors are types and allowed.
+//   - sig: no module imports; standard library only; no net/http.
+//   - internal/<adapter>: may import the root and sig; never another adapter.
+//   - cmd/tunna: anything.
+
+const modulePath = "github.com/tunnaio/tunna"
+
+type rule struct {
+	allowModule    []string // module import paths allowed, exact
+	forbidPrefixes []string // stdlib prefixes forbidden
 }
 
-func TestRootPackageImportsOnlyPureStdlib(t *testing.T) {
-	pkg, err := build.ImportDir(".", 0)
-	if err != nil {
-		t.Fatalf("reading package in current directory: %v", err)
+var rules = map[string]rule{
+	".":   {forbidPrefixes: []string{"os", "net", "database/sql", "syscall", "log", "io/fs"}},
+	"sig": {forbidPrefixes: []string{"os", "net/http", "database/sql", "syscall", "log"}},
+}
+
+func TestImportGraph(t *testing.T) {
+	dirs := packageDirs(t)
+	for _, dir := range dirs {
+		dir := dir
+		t.Run(filepath.ToSlash(dir), func(t *testing.T) {
+			pkg, err := build.ImportDir(dir, 0)
+			if err != nil {
+				if _, ok := err.(*build.NoGoError); ok {
+					return
+				}
+				t.Fatalf("reading package: %v", err)
+			}
+			checkImports(t, dir, pkg.Imports)
+		})
 	}
-	for _, imp := range pkg.Imports {
-		for _, bad := range forbiddenPrefixes {
-			if imp == bad || strings.HasPrefix(imp, bad+"/") {
-				t.Errorf("root package imports %q, which ADR-0005 forbids (matches %q)", imp, bad)
+}
+
+func checkImports(t *testing.T, dir string, imports []string) {
+	t.Helper()
+	rel := filepath.ToSlash(dir)
+	if rel == "." {
+		rel = "."
+	}
+	r, hasRule := rules[rel]
+	isAdapter := strings.HasPrefix(rel, "internal/")
+	isCmd := strings.HasPrefix(rel, "cmd/")
+
+	for _, imp := range imports {
+		inModule := imp == modulePath || strings.HasPrefix(imp, modulePath+"/")
+
+		switch {
+		case isCmd:
+			// wiring may import anything
+		case isAdapter:
+			if inModule && imp != modulePath && imp != modulePath+"/sig" {
+				t.Errorf("%s imports %q: adapters may import only the root and sig", rel, imp)
+			}
+		case hasRule:
+			if inModule {
+				t.Errorf("%s imports %q: must not import from the module", rel, imp)
+			}
+			for _, bad := range r.forbidPrefixes {
+				if imp == bad || strings.HasPrefix(imp, bad+"/") {
+					t.Errorf("%s imports %q, forbidden by ADR-0005 (matches %q)", rel, imp, bad)
+				}
+			}
+		default:
+			t.Errorf("%s has no import rule; add one to imports_test.go", rel)
+		}
+
+		if !inModule && (hasRule || isAdapter) {
+			resolved, err := build.Import(imp, "", build.FindOnly)
+			if err != nil || !resolved.Goroot {
+				t.Errorf("%s imports %q, which is not in the standard library", rel, imp)
 			}
 		}
-		resolved, err := build.Import(imp, "", build.FindOnly)
-		if err != nil {
-			t.Errorf("resolving import %q: %v", imp, err)
-			continue
-		}
-		if !resolved.Goroot {
-			t.Errorf("root package imports %q, which is not in the standard library", imp)
-		}
 	}
+}
+
+// packageDirs lists every directory under the module root that holds Go
+// files, as paths relative to the root, skipping hidden and vendor dirs.
+func packageDirs(t *testing.T) []string {
+	t.Helper()
+	var dirs []string
+	seen := map[string]bool{}
+	err := filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := d.Name()
+		if d.IsDir() && path != "." && (strings.HasPrefix(name, ".") || name == "vendor" || name == "testdata" || name == "sdk" || name == "spec" || name == "docs") {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && strings.HasSuffix(name, ".go") {
+			dir := filepath.Dir(path)
+			if !seen[dir] {
+				seen[dir] = true
+				dirs = append(dirs, dir)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking module: %v", err)
+	}
+	return dirs
 }

@@ -3,10 +3,10 @@ package httpapi_test
 // Conformance runner: replays spec/conformance/cases/*.json against the HTTP
 // handler built by httpapi.New, the same constructor cmd/tunna uses.
 //
-// Scope for now: cases that need no fixtures and no credentials. Cases that
-// need a signer (package sig) or provisioned keys and buckets are skipped
-// with a reason, and will run once those exist. When the store adapters
-// land, this file moves to where it may import them (ADR-0005, rule 7).
+// Requests are signed with package sig using the keys in fixtures.json.
+// Cases that need provisioned buckets or objects are skipped with a reason
+// until a store adapter exists. When the store adapters land, this file
+// moves to where it may import them (ADR-0005, rule 7).
 
 import (
 	"bytes"
@@ -18,14 +18,17 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tunnaio/tunna/internal/httpapi"
+	"github.com/tunnaio/tunna/sig"
 )
 
 const specDir = "../../spec"
@@ -92,11 +95,59 @@ type errorTable struct {
 	} `json:"errors"`
 }
 
+type fixtures struct {
+	Keys map[string]struct {
+		ID       string `json:"id"`
+		Secret   string `json:"secret"`
+		Disabled bool   `json:"disabled"`
+	} `json:"keys"`
+	Buckets map[string]json.RawMessage `json:"buckets"`
+}
+
+// auth is the decoded form of a step's "auth" field.
+type auth struct {
+	None bool
+	Key  *struct {
+		Key               string   `json:"key"`
+		SignedHeaders     []string `json:"signed_headers"`
+		TimeOffsetSeconds int64    `json:"time_offset_seconds"`
+		CorruptSignature  bool     `json:"corrupt_signature"`
+	}
+	Presign *struct {
+		Key              string   `json:"key"`
+		ExpiresInSeconds int64    `json:"expires_in_seconds"`
+		SignedHeaders    []string `json:"signed_headers"`
+	}
+}
+
+func parseAuth(raw json.RawMessage) (auth, error) {
+	var a auth
+	if len(raw) == 0 || string(raw) == `"none"` {
+		a.None = true
+		return a, nil
+	}
+	var probe struct {
+		Key     *string         `json:"key"`
+		Presign json.RawMessage `json:"presign"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return a, err
+	}
+	if probe.Presign != nil {
+		return a, json.Unmarshal(probe.Presign, &a.Presign)
+	}
+	if probe.Key != nil {
+		return a, json.Unmarshal(raw, &a.Key)
+	}
+	return a, fmt.Errorf("unrecognised auth %s", raw)
+}
+
 // --- the runner ---
 
 func TestConformance(t *testing.T) {
 	version := strings.TrimSpace(mustRead(t, filepath.Join(specDir, "VERSION")))
 	statusOf := loadErrorTable(t)
+	fx := loadFixtures(t)
 
 	files, err := filepath.Glob(filepath.Join(specDir, "conformance", "cases", "*.json"))
 	if err != nil || len(files) == 0 {
@@ -117,29 +168,34 @@ func TestConformance(t *testing.T) {
 		for _, c := range cf.Cases {
 			c := c
 			t.Run(c.Name, func(t *testing.T) {
-				if reason := unsupported(c); reason != "" {
+				if reason := unsupported(c, fx); reason != "" {
 					t.Skip(reason)
 				}
-				runCase(t, srv, c, statusOf)
+				runCase(t, srv, c, statusOf, fx)
 			})
 		}
 	}
 }
 
-// unsupported returns a reason to skip while the harness lacks fixtures and a signer.
-func unsupported(c conformanceCase) string {
-	if c.Fixtures == nil || len(*c.Fixtures) > 0 {
-		return "needs provisioned fixtures; no store adapter yet"
+// unsupported returns a reason to skip while the harness cannot provision
+// buckets and objects. Keys need no provisioning on the runner's side; the
+// server under test must know the fixture keys for signed cases to pass.
+func unsupported(c conformanceCase, fx fixtures) string {
+	if c.Fixtures == nil {
+		return "needs all fixtures provisioned; no store adapter yet"
 	}
-	for _, s := range c.Steps {
-		if string(s.Request.Auth) != `"none"` {
-			return "needs a signer (package sig) and key fixtures"
+	for _, name := range *c.Fixtures {
+		if _, ok := fx.Buckets[name]; ok {
+			return "needs bucket fixture " + name + "; no store adapter yet"
+		}
+		if _, ok := fx.Keys[name]; !ok {
+			return "unknown fixture " + name
 		}
 	}
 	return ""
 }
 
-func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map[string]int) {
+func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map[string]int, fx fixtures) {
 	captured := map[string]string{}
 	for i, s := range c.Steps {
 		name := s.Name
@@ -148,22 +204,55 @@ func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map
 		}
 		sub := func(in string) string { return substitute(in, captured) }
 
-		// URL
-		var path strings.Builder
-		if len(s.Request.Path) == 0 {
-			path.WriteString("/")
+		// Decoded inputs, after substitution.
+		segments := make([]string, len(s.Request.Path))
+		for i, seg := range s.Request.Path {
+			segments[i] = sub(seg)
 		}
-		for _, seg := range s.Request.Path {
-			path.WriteString("/")
-			path.WriteString(encode(sub(seg)))
-		}
-		var query []string
+		query := url.Values{}
 		for _, kv := range s.Request.Query {
-			query = append(query, encode(sub(kv[0]))+"="+encode(sub(kv[1])))
+			query.Add(sub(kv[0]), sub(kv[1]))
 		}
-		url := srv.URL + path.String()
-		if len(query) > 0 {
-			url += "?" + strings.Join(query, "&")
+		headers := map[string]string{}
+		for k, v := range s.Request.Headers {
+			headers[k] = sub(v)
+		}
+
+		a, err := parseAuth(s.Request.Auth)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+
+		// URL: sig's encoder is the one under test for the path and query,
+		// but the runner must not depend on it being right, so the runner
+		// encodes with its own copy.
+		var path strings.Builder
+		if len(segments) == 0 {
+			path.WriteString("/")
+		}
+		for _, seg := range segments {
+			path.WriteString("/")
+			path.WriteString(encode(seg))
+		}
+		requestURL := srv.URL + path.String()
+
+		sigReq := sig.Request{Method: s.Request.Method, Path: segments, Query: query, Headers: headers}
+		switch {
+		case a.Presign != nil:
+			key := fixtureKey(t, fx, a.Presign.Key)
+			sigReq.SignedHeaders = a.Presign.SignedHeaders
+			expires := time.Now().Unix() + a.Presign.ExpiresInSeconds
+			requestURL += "?" + sig.PresignQuery(sigReq, key, expires)
+		default:
+			var parts []string
+			for name, values := range query {
+				for _, v := range values {
+					parts = append(parts, encode(name)+"="+encode(v))
+				}
+			}
+			if len(parts) > 0 {
+				requestURL += "?" + strings.Join(parts, "&")
+			}
 		}
 
 		// Body
@@ -185,18 +274,30 @@ func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map
 			}
 		}
 
-		req, err := http.NewRequest(s.Request.Method, url, reqBody)
+		req, err := http.NewRequest(s.Request.Method, requestURL, reqBody)
 		if err != nil {
 			t.Fatalf("%s: building request: %v", name, err)
 		}
-		for k, v := range s.Request.Headers {
-			req.Header.Set(k, sub(v))
+		for k, v := range headers {
+			req.Header.Set(k, v)
 		}
 		if s.Request.Body != nil && s.Request.Body.JSON != nil && req.Header.Get("Content-Type") == "" {
 			req.Header.Set("Content-Type", "application/json")
+			headers["Content-Type"] = "application/json"
 		}
 		if s.Request.ExpectContinue {
 			req.Header.Set("Expect", "100-continue")
+		}
+		if a.Key != nil {
+			key := fixtureKey(t, fx, a.Key.Key)
+			sigReq.SignedHeaders = a.Key.SignedHeaders
+			ts := time.Now().Unix() + a.Key.TimeOffsetSeconds
+			authz := sig.Authorization(sigReq, key, ts)
+			if a.Key.CorruptSignature {
+				authz = corruptLastHex(authz)
+			}
+			req.Header.Set("X-Tunna-Date", strconv.FormatInt(ts, 10))
+			req.Header.Set("Authorization", authz)
 		}
 
 		resp, err := srv.Client().Do(req)
@@ -316,6 +417,33 @@ func mustRead(t *testing.T, path string) string {
 		t.Fatalf("reading %s: %v", path, err)
 	}
 	return string(b)
+}
+
+func loadFixtures(t *testing.T) fixtures {
+	var fx fixtures
+	if err := json.Unmarshal([]byte(mustRead(t, filepath.Join(specDir, "conformance", "fixtures.json"))), &fx); err != nil {
+		t.Fatalf("fixtures.json: %v", err)
+	}
+	return fx
+}
+
+func fixtureKey(t *testing.T, fx fixtures, name string) sig.Key {
+	t.Helper()
+	k, ok := fx.Keys[name]
+	if !ok {
+		t.Fatalf("no key fixture %q", name)
+	}
+	return sig.Key{ID: k.ID, Secret: k.Secret}
+}
+
+// corruptLastHex flips the final hex digit of a signature so it is
+// well-formed but wrong.
+func corruptLastHex(s string) string {
+	last := s[len(s)-1]
+	if last == '0' {
+		return s[:len(s)-1] + "1"
+	}
+	return s[:len(s)-1] + "0"
 }
 
 func loadErrorTable(t *testing.T) map[string]int {
