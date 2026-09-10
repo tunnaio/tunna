@@ -12,6 +12,7 @@ import (
 
 	"github.com/tunnaio/tunna/internal/config"
 	"github.com/tunnaio/tunna/internal/httpapi"
+	"github.com/tunnaio/tunna/internal/memory"
 )
 
 // version is the server build version, set at build time with
@@ -37,8 +38,11 @@ func run() error {
 	cfg.LogValues(slog.Default())
 
 	srv := &http.Server{
-		Addr:    cfg.Addr,
-		Handler: httpapi.New(version),
+		Addr: cfg.Addr,
+		Handler: httpapi.New(httpapi.Options{
+			ServerVersion: version,
+			Keys:          memory.NewKeyStore(nil),
+		}),
 	}
 
 	errc := make(chan error, 1)

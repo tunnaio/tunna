@@ -27,7 +27,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tunnaio/tunna"
 	"github.com/tunnaio/tunna/internal/httpapi"
+	"github.com/tunnaio/tunna/internal/memory"
 	"github.com/tunnaio/tunna/sig"
 )
 
@@ -77,15 +79,16 @@ type genBytes struct {
 }
 
 type expect struct {
-	Status     *int                       `json:"status"`
-	Error      *string                    `json:"error"`
-	Headers    map[string]json.RawMessage `json:"headers"`
-	JSON       json.RawMessage            `json:"json"`
-	JSONAbsent []string                   `json:"json_absent"`
-	BodySHA256 *string                    `json:"body_sha256"`
-	BodyLength *int64                     `json:"body_length"`
-	BodyEmpty  *bool                      `json:"body_empty"`
-	BodyBytes  *genBytes                  `json:"body_bytes"`
+	Status      *int                       `json:"status"`
+	Error       *string                    `json:"error"`
+	Headers     map[string]json.RawMessage `json:"headers"`
+	JSON        json.RawMessage            `json:"json"`
+	JSONPresent []string                   `json:"json_present"`
+	JSONAbsent  []string                   `json:"json_absent"`
+	BodySHA256  *string                    `json:"body_sha256"`
+	BodyLength  *int64                     `json:"body_length"`
+	BodyEmpty   *bool                      `json:"body_empty"`
+	BodyBytes   *genBytes                  `json:"body_bytes"`
 }
 
 type errorTable struct {
@@ -154,7 +157,16 @@ func TestConformance(t *testing.T) {
 		t.Fatalf("no case files under %s: %v", specDir, err)
 	}
 
-	srv := httptest.NewServer(httpapi.New("test"))
+	// The server under test knows every fixture key, disabled ones included,
+	// exactly as fixtures.json describes them.
+	var keys []tunna.APIKey
+	for _, k := range fx.Keys {
+		keys = append(keys, tunna.APIKey{ID: k.ID, Secret: k.Secret, Disabled: k.Disabled})
+	}
+	srv := httptest.NewServer(httpapi.New(httpapi.Options{
+		ServerVersion: "test",
+		Keys:          memory.NewKeyStore(keys),
+	}))
 	defer srv.Close()
 
 	for _, file := range files {
@@ -367,7 +379,7 @@ func check(t *testing.T, name string, e expect, resp *http.Response, body []byte
 		}
 	}
 
-	if e.JSON != nil || len(e.JSONAbsent) > 0 {
+	if e.JSON != nil || len(e.JSONPresent) > 0 || len(e.JSONAbsent) > 0 {
 		var got any
 		if err := json.Unmarshal(body, &got); err != nil {
 			t.Errorf("%s: body is not JSON: %v\n%s", name, err, body)
@@ -379,6 +391,11 @@ func check(t *testing.T, name string, e expect, resp *http.Response, body []byte
 				}
 				if diff := subset(want, got, ""); diff != "" {
 					t.Errorf("%s: %s\nbody: %s", name, diff, body)
+				}
+			}
+			for _, ptr := range e.JSONPresent {
+				if _, err := pointer(got, ptr); err != nil {
+					t.Errorf("%s: %s should be present: %v\nbody: %s", name, ptr, err, body)
 				}
 			}
 			for _, ptr := range e.JSONAbsent {
