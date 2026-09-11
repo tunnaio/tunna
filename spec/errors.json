@@ -32,7 +32,7 @@
 
     { "code": "body_too_large", "status": 413, "stage": 5, "description": "The body exceeds the applicable limit: the single-request object cap, or the session's part size." },
     { "code": "body_length_mismatch", "status": 422, "stage": 5, "description": "The body ended at a different length than Content-Length declared." },
-    { "code": "checksum_mismatch", "status": 422, "stage": 5, "description": "The body's checksum does not equal the signed checksum header.", "details": { "algorithm": "string" } },
+    { "code": "checksum_mismatch", "status": 422, "stage": 5, "description": "The body's CRC32C does not equal the X-Tunna-Checksum header; or, at complete, a supplied per-part checksum does not equal the one recorded for that part (details.part names it).", "details": { "algorithm": "string", "part": "integer" } },
 
     { "code": "bucket_not_found", "status": 404, "stage": 6, "description": "The bucket does not exist." },
     { "code": "object_not_found", "status": 404, "stage": 6, "description": "The object does not exist in the bucket." },

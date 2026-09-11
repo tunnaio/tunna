@@ -1,0 +1,157 @@
+{
+  "spec": "0.1.0-draft",
+  "encoding": "crc32c is CRC-32 with the Castagnoli polynomial (0x1EDC6F41, reflected 0x82F63B78), init 0xFFFFFFFF, final xor 0xFFFFFFFF, reflected in and out; the check value for '123456789' is 0xE3069283. On the wire the 4-byte big-endian value is base64-encoded and prefixed with the algorithm name and an equals sign, as in the wire field of every case below.",
+  "single": [
+    {
+      "name": "empty",
+      "input": {
+        "text": ""
+      },
+      "crc32c_hex": "00000000",
+      "wire": "crc32c=AAAAAA=="
+    },
+    {
+      "name": "hello",
+      "input": {
+        "text": "hello"
+      },
+      "crc32c_hex": "9a71bb4c",
+      "wire": "crc32c=mnG7TA=="
+    },
+    {
+      "name": "check-string",
+      "input": {
+        "text": "123456789"
+      },
+      "crc32c_hex": "e3069283",
+      "wire": "crc32c=4waSgw=="
+    },
+    {
+      "name": "unicode",
+      "input": {
+        "text": "år 2026 🙂"
+      },
+      "crc32c_hex": "b23fdf80",
+      "wire": "crc32c=sj/fgA=="
+    },
+    {
+      "name": "zeros-32",
+      "input": {
+        "hex": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "crc32c_hex": "8a9136aa",
+      "wire": "crc32c=ipE2qg=="
+    },
+    {
+      "name": "generated-64k",
+      "input": {
+        "bytes": {
+          "length": 65536,
+          "seed": 1
+        }
+      },
+      "crc32c_hex": "56108205",
+      "wire": "crc32c=VhCCBQ=="
+    }
+  ],
+  "combine": [
+    {
+      "name": "two-text-parts",
+      "parts": [
+        {
+          "text": "hello, "
+        },
+        {
+          "text": "tunna"
+        }
+      ],
+      "part_crc32c_hex": [
+        "7adc9f89",
+        "1d470347"
+      ],
+      "part_lengths": [
+        7,
+        5
+      ],
+      "whole_crc32c_hex": "45742616",
+      "wire": "crc32c=RXQmFg=="
+    },
+    {
+      "name": "empty-second-part",
+      "parts": [
+        {
+          "text": "abc"
+        },
+        {
+          "text": ""
+        }
+      ],
+      "part_crc32c_hex": [
+        "364b3fb7",
+        "00000000"
+      ],
+      "part_lengths": [
+        3,
+        0
+      ],
+      "whole_crc32c_hex": "364b3fb7",
+      "wire": "crc32c=Nks/tw=="
+    },
+    {
+      "name": "empty-first-part",
+      "parts": [
+        {
+          "text": ""
+        },
+        {
+          "text": "abc"
+        }
+      ],
+      "part_crc32c_hex": [
+        "00000000",
+        "364b3fb7"
+      ],
+      "part_lengths": [
+        0,
+        3
+      ],
+      "whole_crc32c_hex": "364b3fb7",
+      "wire": "crc32c=Nks/tw=="
+    },
+    {
+      "name": "three-generated-parts-5MiB-5MiB-1KiB",
+      "parts": [
+        {
+          "bytes": {
+            "length": 5242880,
+            "seed": 8
+          }
+        },
+        {
+          "bytes": {
+            "length": 5242880,
+            "seed": 9
+          }
+        },
+        {
+          "bytes": {
+            "length": 1024,
+            "seed": 10
+          }
+        }
+      ],
+      "part_crc32c_hex": [
+        "5173231d",
+        "65a8032c",
+        "d7a232b3"
+      ],
+      "part_lengths": [
+        5242880,
+        5242880,
+        1024
+      ],
+      "whole_crc32c_hex": "24a029e5",
+      "wire": "crc32c=JKAp5Q=="
+    }
+  ]
+}

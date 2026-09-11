@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tunnaio/tunna/spec/vectors/object-keys.schema.json",
+  "title": "tunna object key vectors",
+  "description": "Oracle for the object key rule in wire.md section 1. A validator passes when it accepts every valid case and rejects every invalid one. Keys are given as JSON strings; a case may instead give 'hex' for byte sequences JSON cannot carry, such as invalid UTF-8.",
+  "type": "object",
+  "required": ["spec", "rule", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "type": "string" },
+    "rule": { "type": "string" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["valid"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string" },
+          "hex": { "type": "string", "pattern": "^([0-9a-f]{2})+$", "description": "Raw bytes of the key, for cases a JSON string cannot express." },
+          "valid": { "type": "boolean" },
+          "reason": { "type": "string" }
+        },
+        "oneOf": [ { "required": ["key"] }, { "required": ["hex"] } ]
+      }
+    }
+  }
+}

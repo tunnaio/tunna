@@ -76,18 +76,48 @@ Notes:
 - Listing buckets is `SELECT ... FROM buckets ORDER BY name`, a walk of the
   primary key.
 
+## Version 2: objects
+
+```sql
+CREATE TABLE objects (
+    bucket       TEXT    NOT NULL REFERENCES buckets(name),
+    key          TEXT    NOT NULL,
+    blob_id      TEXT    NOT NULL,
+    size         INTEGER NOT NULL,
+    content_type TEXT    NOT NULL,
+    checksum     TEXT    NOT NULL,
+    metadata     TEXT    NOT NULL DEFAULT '{}',
+    created_at   INTEGER NOT NULL,
+    PRIMARY KEY (bucket, key)
+) WITHOUT ROWID, STRICT;
+```
+
+Notes:
+
+- `blob_id` names the file on disk (ADR-0007). An overwrite writes a new
+  file, then updates this column; the previous id is returned to the caller
+  for removal after commit. `PutObject` is therefore an upsert that also
+  reads the old value, in one statement: `INSERT ... ON CONFLICT DO UPDATE
+  ... RETURNING` cannot return the pre-update value, so the adapter does a
+  `SELECT blob_id` and the upsert inside one transaction.
+- `checksum` is the wire form, `crc32c=...` (ADR-0006), stored as text so it
+  is served without conversion and readable in the CLI.
+- `metadata` is a JSON object as text. SQLite's JSON functions can query it
+  if that is ever wanted; today it is opaque to the store.
+- `REFERENCES buckets(name)` with `foreign_keys=ON` means a bucket cannot be
+  deleted while objects reference it, which is `bucket_not_empty`. The
+  adapter checks explicitly first to answer with the right code rather than
+  relying on the constraint error.
+- Prefix listing is `WHERE bucket = ? AND key >= ? AND key < ?` on the
+  primary key, with the upper bound being the prefix with its last byte
+  incremented, or no upper bound for an empty prefix. `after` adds
+  `AND key > ?`. Ordered by key, which is the index order, bytewise.
+
 ## Later versions, sketched
 
-Not written as migrations yet; recorded so v1 makes no choice that fights
-them.
+Not written as migrations yet; recorded so earlier versions make no choice
+that fights them.
 
-- **v2, objects.** `objects (bucket TEXT, key TEXT, id TEXT, size INTEGER,
-  content_type TEXT, checksum TEXT, created_at INTEGER, metadata TEXT,
-  PRIMARY KEY (bucket, key)) WITHOUT ROWID, STRICT`, with `bucket`
-  referencing `buckets(name)`. `id` names the blob file on disk (the blob
-  layout follow-up from ADR-0002), so an overwrite is a new file and a row
-  update, and the old file is collected afterwards. Prefix listing is a
-  range scan on the primary key, which the benchmark's prefix scan models.
 - **v3, upload sessions.** `uploads (id TEXT PRIMARY KEY, bucket, key,
   part_size INTEGER, parts_received BLOB, expires_at INTEGER, ...)`. The
   received-parts set (ADR-0001) is a bitmap in a `BLOB`, one bit per part,

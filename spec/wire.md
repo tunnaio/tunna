@@ -178,9 +178,60 @@ bucket that still holds objects or active uploads is `bucket_not_empty`.
 | `DELETE /{bucket}/{key}` | Delete. |
 | `GET /{bucket}?list&prefix=&delimiter=&after=&limit=` | List keys. Ordered by key. `delimiter` groups common prefixes. |
 
-Response headers on GET and HEAD: `Content-Length`, `Content-Type`, `ETag`,
-`Last-Modified`, the checksum header (section 8), and any user metadata
-headers (prefix `X-Tunna-Meta-`).
+### 5.1 Single-request PUT
+
+The body is the object. Request headers:
+
+| Header | Meaning |
+|--------|---------|
+| `Content-Type` | Stored and served back. Default `application/octet-stream`. |
+| `Content-Length` | Required; a chunked body without it is `malformed_request`. Above the single-request cap is `body_too_large` before any byte is read. |
+| `X-Tunna-Checksum` | Optional, section 8. |
+| `X-Tunna-Meta-<name>` | User metadata. Names are case-insensitive and stored lowercase; values are stored as sent. Total size cap is server configuration. |
+
+Response: `201` with the object record as JSON (section 5.3) and the same
+`ETag` and `X-Tunna-Checksum` headers a GET would carry. An existing key is
+replaced; readers mid-download of the old bytes finish on the old bytes
+(ADR-0007). The bucket must exist: `bucket_not_found` at stage 6.
+
+### 5.2 GET and HEAD
+
+Response headers: `Content-Length`, `Content-Type`, `ETag`, `Last-Modified`
+(RFC 7231 format, from `created_at`), `X-Tunna-Checksum`,
+`Accept-Ranges: bytes`, and one `X-Tunna-Meta-<name>` per metadata entry.
+HEAD carries the same headers and no body.
+
+`Range` with a single `bytes=` range is honoured with `206` and
+`Content-Range`; an unsatisfiable range is `416`. Multiple ranges are not
+supported and are served as a full `200`. `If-None-Match` against the ETag
+answers `304`.
+
+A read on a bucket marked public needs no credentials. A read on any other
+bucket requires them; without, `unauthenticated`.
+
+### 5.3 Object record
+
+Returned by PUT and by list entries:
+
+```json
+{
+  "bucket": "photos",
+  "key": "2026/one.jpg",
+  "size": 65536,
+  "content_type": "image/jpeg",
+  "checksum": "crc32c=4waSgw==",
+  "created_at": 1788912000,
+  "metadata": { "title": "Summer" }
+}
+```
+
+`metadata` is present only when non-empty.
+
+### 5.4 DELETE
+
+`204`, empty body. Unknown key is `object_not_found`. The metadata row is
+removed before the bytes are, so a crash between the two leaves an orphan
+file and never a dangling row.
 
 ## 6. Uploads [ADR-0001]
 
@@ -240,13 +291,34 @@ metadata records plus `common_prefixes` when a delimiter is given, plus
 `next` when the page is full. Pagination is by `after=<last key seen>`.
 `limit` defaults to 1000 and is capped by the server.
 
-## 8. Checksums
+## 8. Checksums [ADR-0006]
 
-Decided in the checksum ADR (follow-up to ADR-0001 and ADR-0003). Until then:
-the header name, the algorithm, and whether complete requires per-part values
-are all open. The signing vectors that include a checksum header use the
-placeholder name `x-tunna-checksum` and will be regenerated when the header
-is fixed.
+One algorithm: **CRC32C**, CRC-32 with the Castagnoli polynomial. It is
+composable, so an object uploaded in parts gets its whole-object value from
+the per-part values at complete, with no second read. The vector file
+`vectors/crc32c.json` is the authority on the algorithm, the wire form, and
+the combine rule.
+
+**Wire form:** the four-byte big-endian value, standard base64 with padding,
+prefixed with the algorithm name: `crc32c=4waSgw==` is the checksum of the
+ASCII string `123456789`.
+
+**Header:** `X-Tunna-Checksum`.
+
+| Where | Meaning |
+|-------|---------|
+| Request with a body (object PUT, part PUT) | Optional. When present it must be in the wire form, may be listed among the signed headers, and the body is rejected with `checksum_mismatch` if its CRC32C differs. Absent means the server computes the value while writing. |
+| Part PUT response | The part's own checksum. |
+| Complete request body | Optional `checksums`: an array of the per-part wire values in part order. When present, each is checked against what the server recorded; a mismatch is `checksum_mismatch` with `details.part`. |
+| Object GET and HEAD response | The object's checksum, always. |
+
+**ETag** is the object's checksum as a quoted string, `ETag: "crc32c=..."`.
+It is strong: the same bytes produce the same value regardless of how they
+were uploaded, single request or parts of any size.
+
+A malformed header value, meaning anything that is not `crc32c=` followed by
+eight base64 characters ending in `==`, is `invalid_parameter` with
+`details.name` set to the header name, at stage 4.
 
 ## 9. Errors
 

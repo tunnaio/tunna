@@ -1,0 +1,121 @@
+{
+  "spec": "0.1.0-draft",
+  "rule": "1 to 1024 bytes of valid UTF-8; any Unicode scalar value except U+0000. Slashes are data. Keys are never paths on disk.",
+  "cases": [
+    {
+      "key": "a",
+      "valid": true,
+      "reason": "one byte is the minimum"
+    },
+    {
+      "key": "hello.txt",
+      "valid": true
+    },
+    {
+      "key": "photos/2026/one.jpg",
+      "valid": true,
+      "reason": "slashes are ordinary characters"
+    },
+    {
+      "key": "/leading-slash",
+      "valid": true,
+      "reason": "a leading slash is data, not a root"
+    },
+    {
+      "key": "trailing-slash/",
+      "valid": true
+    },
+    {
+      "key": "double//slash",
+      "valid": true
+    },
+    {
+      "key": "a/../b",
+      "valid": true,
+      "reason": "dot segments mean nothing; keys are never resolved as paths"
+    },
+    {
+      "key": ".",
+      "valid": true
+    },
+    {
+      "key": "..",
+      "valid": true
+    },
+    {
+      "key": "år 2026/bild #1.jpg",
+      "valid": true,
+      "reason": "non-ASCII, space and hash are fine"
+    },
+    {
+      "key": "🙂",
+      "valid": true,
+      "reason": "four-byte UTF-8 (a smiling face)"
+    },
+    {
+      "key": "tab\there",
+      "valid": true,
+      "reason": "control characters other than NUL are allowed; the encoder handles them"
+    },
+    {
+      "key": "a%2Fb",
+      "valid": true,
+      "reason": "a literal percent sign is data; keys arrive decoded"
+    },
+    {
+      "key": "UPPER and lower",
+      "valid": true,
+      "reason": "case is significant and unrestricted"
+    },
+    {
+      "hex": "61",
+      "valid": true,
+      "reason": "same as a, given as bytes"
+    },
+    {
+      "key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "valid": true,
+      "reason": "exactly 1024 bytes"
+    },
+    {
+      "key": "åååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååå",
+      "valid": true,
+      "reason": "512 two-byte characters is exactly 1024 bytes; the limit is bytes, not characters"
+    },
+    {
+      "key": "",
+      "valid": false,
+      "reason": "empty"
+    },
+    {
+      "key": "a\u0000b",
+      "valid": false,
+      "reason": "NUL is the one excluded code point"
+    },
+    {
+      "key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "valid": false,
+      "reason": "1025 bytes"
+    },
+    {
+      "key": "ååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååååå",
+      "valid": false,
+      "reason": "513 two-byte characters is 1026 bytes"
+    },
+    {
+      "hex": "ff",
+      "valid": false,
+      "reason": "invalid UTF-8: a lone 0xFF byte"
+    },
+    {
+      "hex": "c328",
+      "valid": false,
+      "reason": "invalid UTF-8: truncated two-byte sequence"
+    },
+    {
+      "hex": "eda080",
+      "valid": false,
+      "reason": "invalid UTF-8: a surrogate code point encoded directly"
+    }
+  ]
+}
