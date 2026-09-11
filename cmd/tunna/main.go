@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tunnaio/tunna"
 	"github.com/tunnaio/tunna/internal/config"
 	"github.com/tunnaio/tunna/internal/httpapi"
 	"github.com/tunnaio/tunna/internal/sqlite"
@@ -47,6 +49,13 @@ func run() error {
 		return err
 	}
 	defer db.Close()
+
+	if cfg.BootstrapKeyID != "" {
+		if err := db.PutKey(ctx, tunna.APIKey{ID: cfg.BootstrapKeyID, Secret: cfg.BootstrapKeySecret}); err != nil {
+			return fmt.Errorf("bootstrap key: %w", err)
+		}
+		slog.Info("bootstrap key upserted", "id", cfg.BootstrapKeyID)
+	}
 
 	srv := &http.Server{
 		Addr: cfg.Addr,
