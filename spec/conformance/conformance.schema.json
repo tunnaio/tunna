@@ -110,7 +110,7 @@
           "additionalProperties": { "oneOf": [ { "type": "string" }, { "type": "object", "required": ["present"], "properties": { "present": { "type": "boolean" } } } ] },
           "description": "Header name → exact value, or {present: true|false}. Names are case-insensitive."
         },
-        "json": { "description": "Subset match: every field given here must be present in the response body with this value. Arrays match exactly. Objects match by subset, recursively." },
+        "json": { "description": "Subset match: every field given here must be present in the response body with this value. Objects match by subset, recursively. Arrays must have the same length and each element matches by the same rule, so an array of objects is a subset match per element." },
         "json_present": { "type": "array", "items": { "type": "string" }, "description": "JSON pointers that must resolve in the response body, whatever their value. For fields like server_time whose value the case cannot predict." },
         "json_absent": { "type": "array", "items": { "type": "string" }, "description": "JSON pointers that must not resolve in the response body." },
         "body_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 of the raw response body, for binary responses." },

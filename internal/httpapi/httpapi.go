@@ -13,8 +13,9 @@ import (
 // Options configures the HTTP adapter. Zero values take the defaults noted
 // on each field, so callers set only what they need.
 type Options struct {
-	ServerVersion string           // reported by GET /-/version
-	Keys          tunna.KeyStore   // where stage 2 looks up API keys
+	ServerVersion string         // reported by GET /-/version
+	Keys          tunna.KeyStore // where stage 2 looks up API keys
+	Buckets       tunna.BucketStore
 	Now           func() time.Time // clock; nil means time.Now
 	Skew          time.Duration    // accepted X-Tunna-Date drift; 0 means 15 minutes
 	MaxPresign    time.Duration    // longest presigned lifetime; 0 means 7 days
@@ -38,6 +39,7 @@ func New(o Options) http.Handler {
 		mux:           mux,
 		serverVersion: o.ServerVersion,
 		keys:          o.Keys,
+		buckets:       o.Buckets,
 		now:           o.Now,
 		skew:          o.Skew,
 		maxPresign:    o.MaxPresign,
@@ -45,6 +47,13 @@ func New(o Options) http.Handler {
 
 	mux.HandleFunc("GET /-/health", h.health)
 	mux.HandleFunc("GET /-/version", h.version)
+
+	// buckets routes
+	mux.HandleFunc("GET /-/buckets", requireAuth(h.listBuckets))
+	mux.HandleFunc("GET /-/buckets/{bucket}", requireAuth(h.getBucket))
+	mux.HandleFunc("PUT /-/buckets/{bucket}", requireAuth(h.createBucket))
+	mux.HandleFunc("DELETE /-/buckets/{bucket}", requireAuth(h.deleteBucket))
+
 	mux.HandleFunc("/", h.notFound)
 
 	return h.authenticate(mux)
@@ -55,6 +64,7 @@ type handler struct {
 	mux           *http.ServeMux
 	serverVersion string
 	keys          tunna.KeyStore
+	buckets       tunna.BucketStore
 	now           func() time.Time
 	skew          time.Duration
 	maxPresign    time.Duration

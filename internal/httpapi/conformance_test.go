@@ -104,7 +104,25 @@ type fixtures struct {
 		Secret   string `json:"secret"`
 		Disabled bool   `json:"disabled"`
 	} `json:"keys"`
-	Buckets map[string]json.RawMessage `json:"buckets"`
+	Buckets map[string]struct {
+		Name    string          `json:"name"`
+		Public  bool            `json:"public"`
+		Objects json.RawMessage `json:"objects"` // provisioned once an object store exists
+	} `json:"buckets"`
+}
+
+// fixtureBuckets returns the bucket fixtures as the server should hold them
+// before any case runs. The fixture key is the bucket name unless overridden.
+func fixtureBuckets(fx fixtures, createdAt time.Time) []tunna.Bucket {
+	var out []tunna.Bucket
+	for key, b := range fx.Buckets {
+		name := b.Name
+		if name == "" {
+			name = key
+		}
+		out = append(out, tunna.Bucket{Name: name, Public: b.Public, CreatedAt: createdAt})
+	}
+	return out
 }
 
 // auth is the decoded form of a step's "auth" field.
@@ -166,6 +184,7 @@ func TestConformance(t *testing.T) {
 	srv := httptest.NewServer(httpapi.New(httpapi.Options{
 		ServerVersion: "test",
 		Keys:          memory.NewKeyStore(keys),
+		Buckets:       memory.NewBucketStore(fixtureBuckets(fx, time.Now())),
 	}))
 	defer srv.Close()
 
@@ -189,16 +208,24 @@ func TestConformance(t *testing.T) {
 	}
 }
 
-// unsupported returns a reason to skip while the harness cannot provision
-// buckets and objects. Keys need no provisioning on the runner's side; the
-// server under test must know the fixture keys for signed cases to pass.
+// unsupported returns a reason to skip a case the harness cannot yet serve.
+// Keys and buckets are provisioned into the server before any case runs;
+// objects inside buckets wait for an object store.
 func unsupported(c conformanceCase, fx fixtures) string {
+	names := []string{}
 	if c.Fixtures == nil {
-		return "needs all fixtures provisioned; no store adapter yet"
+		for name := range fx.Buckets {
+			names = append(names, name)
+		}
+	} else {
+		names = *c.Fixtures
 	}
-	for _, name := range *c.Fixtures {
-		if _, ok := fx.Buckets[name]; ok {
-			return "needs bucket fixture " + name + "; no store adapter yet"
+	for _, name := range names {
+		if b, ok := fx.Buckets[name]; ok {
+			if len(b.Objects) > 0 && string(b.Objects) != "[]" {
+				return "bucket fixture " + name + " holds objects; no object store yet"
+			}
+			continue
 		}
 		if _, ok := fx.Keys[name]; !ok {
 			return "unknown fixture " + name
@@ -526,6 +553,20 @@ func subset(want, got any, at string) string {
 				return fmt.Sprintf("%s/%s: missing", at, k)
 			}
 			if d := subset(wv, gv, at+"/"+k); d != "" {
+				return d
+			}
+		}
+		return ""
+	case []any:
+		g, ok := got.([]any)
+		if !ok {
+			return fmt.Sprintf("%s: want array, got %T", pathOr(at), got)
+		}
+		if len(g) != len(w) {
+			return fmt.Sprintf("%s: array length %d, want %d", pathOr(at), len(g), len(w))
+		}
+		for i := range w {
+			if d := subset(w[i], g[i], fmt.Sprintf("%s/%d", at, i)); d != "" {
 				return d
 			}
 		}

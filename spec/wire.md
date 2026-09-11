@@ -142,6 +142,32 @@ answers `unknown_route`. Both use the JSON error body from section 9.
 | `DELETE /-/uploads/{id}` | Abort the session | key or presigned |
 | `/-/keys...` | Key management | decided with the authorization model |
 
+"key" in the Auth column means credentials are required; a request without
+any answers `unauthenticated`. "key or presigned" means either form. Until the
+authorization model is decided, every enabled key may do everything.
+
+### 4.1 Buckets
+
+A bucket record on the wire:
+
+```json
+{ "name": "photos", "public": false, "created_at": 1788912000 }
+```
+
+| Request | Body | Response |
+|---------|------|----------|
+| `PUT /-/buckets/{bucket}` | Optional JSON `{"public": bool}`; absent body or absent field means `false` | `201` with the bucket record |
+| `GET /-/buckets/{bucket}` | none | `200` with the bucket record |
+| `GET /-/buckets` | none | `200 {"buckets": [record, ...]}` ordered by name; `[]` when none |
+| `DELETE /-/buckets/{bucket}` | none | `204`, empty body |
+
+Faults, in ladder order: an invalid name is `invalid_bucket_name` (stage 4,
+checked before the store is consulted); a body that is not JSON or has a
+field of the wrong type is `invalid_parameter` with `details.name` naming
+the field (stage 4); a taken name on create is `bucket_exists` and an
+unknown name on get or delete is `bucket_not_found` (stage 6). Deleting a
+bucket that still holds objects or active uploads is `bucket_not_empty`.
+
 ## 5. Objects
 
 | Method and path | Purpose |

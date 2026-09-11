@@ -1,0 +1,194 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "bucket-create-get-list-delete",
+      "description": "The whole lifecycle in one case: create answers 201 with the bucket, get returns it, list includes it in name order, delete answers 204, and get afterwards is not found.",
+      "decision": "wire.md 4.1",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "name": "create",
+          "request": { "method": "PUT", "path": ["-", "buckets", "lifecycle"], "auth": { "key": "alice" } },
+          "expect": { "status": 201, "json": { "name": "lifecycle", "public": false }, "json_present": ["/created_at"] }
+        },
+        {
+          "name": "get",
+          "request": { "method": "GET", "path": ["-", "buckets", "lifecycle"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "name": "lifecycle", "public": false } }
+        },
+        {
+          "name": "list-contains-it",
+          "request": { "method": "GET", "path": ["-", "buckets"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json_present": ["/buckets"] }
+        },
+        {
+          "name": "delete",
+          "request": { "method": "DELETE", "path": ["-", "buckets", "lifecycle"], "auth": { "key": "alice" } },
+          "expect": { "status": 204, "body_empty": true }
+        },
+        {
+          "name": "get-after-delete",
+          "request": { "method": "GET", "path": ["-", "buckets", "lifecycle"], "auth": { "key": "alice" } },
+          "expect": { "error": "bucket_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "bucket-create-public",
+      "description": "The create body may set the public flag.",
+      "decision": "wire.md 4.1",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": {
+            "method": "PUT", "path": ["-", "buckets", "site"], "auth": { "key": "alice" },
+            "body": { "json": { "public": true } }
+          },
+          "expect": { "status": 201, "json": { "name": "site", "public": true } }
+        },
+        {
+          "request": { "method": "DELETE", "path": ["-", "buckets", "site"], "auth": { "key": "alice" } },
+          "expect": { "status": 204 }
+        }
+      ]
+    },
+    {
+      "name": "bucket-create-requires-credentials",
+      "description": "Creating a bucket is never anonymous.",
+      "decision": "ADR-0004",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": { "method": "PUT", "path": ["-", "buckets", "anon"], "auth": "none" },
+          "expect": { "error": "unauthenticated", "headers": { "WWW-Authenticate": "TUNNA1-HMAC-SHA256" } }
+        }
+      ]
+    },
+    {
+      "name": "bucket-list-requires-credentials",
+      "decision": "ADR-0004",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "buckets"], "auth": "none" },
+          "expect": { "error": "unauthenticated" }
+        }
+      ]
+    },
+    {
+      "name": "bucket-create-invalid-name",
+      "description": "Stage 4: the naming rule is checked before the store is consulted.",
+      "decision": "wire.md 1",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": { "method": "PUT", "path": ["-", "buckets", "Bad_Name"], "auth": { "key": "alice" } },
+          "expect": { "error": "invalid_bucket_name" }
+        },
+        {
+          "request": { "method": "PUT", "path": ["-", "buckets", "ab"], "auth": { "key": "alice" } },
+          "expect": { "error": "invalid_bucket_name" }
+        },
+        {
+          "request": { "method": "PUT", "path": ["-", "buckets", "-abc"], "auth": { "key": "alice" } },
+          "expect": { "error": "invalid_bucket_name" }
+        }
+      ]
+    },
+    {
+      "name": "bucket-create-exists",
+      "description": "Stage 6: creating a name that is taken is a conflict, and the existing bucket is unchanged.",
+      "decision": "wire.md 4.1",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": {
+            "method": "PUT", "path": ["-", "buckets", "empty"], "auth": { "key": "alice" },
+            "body": { "json": { "public": true } }
+          },
+          "expect": { "error": "bucket_exists" }
+        },
+        {
+          "request": { "method": "GET", "path": ["-", "buckets", "empty"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "name": "empty", "public": false } }
+        }
+      ]
+    },
+    {
+      "name": "bucket-create-malformed-body",
+      "description": "A body that is not JSON, or JSON with the wrong shape, is invalid_parameter at stage 4. An empty body is fine and means defaults.",
+      "decision": "wire.md 4.1",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": {
+            "method": "PUT", "path": ["-", "buckets", "shape"], "auth": { "key": "alice" },
+            "headers": { "Content-Type": "application/json" },
+            "body": { "text": "{not json" }
+          },
+          "expect": { "error": "invalid_parameter" }
+        },
+        {
+          "request": {
+            "method": "PUT", "path": ["-", "buckets", "shape"], "auth": { "key": "alice" },
+            "body": { "json": { "public": "yes" } }
+          },
+          "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "public" } } } }
+        }
+      ]
+    },
+    {
+      "name": "bucket-get-not-found",
+      "decision": "wire.md 4.1",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "buckets", "nope"], "auth": { "key": "alice" } },
+          "expect": { "error": "bucket_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "bucket-delete-not-found",
+      "decision": "wire.md 4.1",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": { "method": "DELETE", "path": ["-", "buckets", "nope"], "auth": { "key": "alice" } },
+          "expect": { "error": "bucket_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "bucket-list-is-sorted-by-name",
+      "description": "The fixtures provide empty, photos and public-site; list returns them in name order with their public flags.",
+      "decision": "wire.md 4.1",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "buckets"], "auth": { "key": "alice" } },
+          "expect": {
+            "status": 200,
+            "json": { "buckets": [
+              { "name": "empty", "public": false },
+              { "name": "photos", "public": false },
+              { "name": "public-site", "public": true }
+            ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bucket-get-with-presigned-url",
+      "description": "Presigned credentials work on the control plane too.",
+      "decision": "ADR-0003",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "buckets", "empty"], "auth": { "presign": { "key": "alice", "expires_in_seconds": 300 } } },
+          "expect": { "status": 200, "json": { "name": "empty" } }
+        }
+      ]
+    }
+  ]
+}

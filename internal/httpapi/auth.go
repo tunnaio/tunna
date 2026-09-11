@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/hmac"
 	"errors"
 	"net/http"
@@ -20,6 +21,11 @@ type credentials struct {
 	signed    []string
 	signature string
 }
+
+// callerKey is the context key under which authenticate stores the verified
+// API key. An unexported struct type cannot collide with any other package's
+// context keys, and the empty struct costs nothing.
+type callerKey struct{}
 
 // Every 401 carries the challenge HTTP requires; the value is the scheme and
 // MAC name the client must use, owned by sig.
@@ -147,8 +153,22 @@ func (h *handler) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
+		r = r.WithContext(context.WithValue(r.Context(), callerKey{}, apikey))
 		next.ServeHTTP(w, r)
 	})
+}
+
+// requireAuth is the first rule of stage 3 (ADR-0004): the wrapped route
+// needs a verified caller. Routes not wrapped are anonymous by declaration.
+func requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := r.Context().Value(callerKey{}).(tunna.APIKey); !ok {
+			writeAuthError(w, codeUnauthenticated, "this route requires credentials", nil)
+			return
+		}
+
+		next(w, r)
+	}
 }
 
 // parseAuthorization reads the header form from spec/wire.md 3.3:

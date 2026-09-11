@@ -42,6 +42,7 @@ func run() error {
 		Handler: httpapi.New(httpapi.Options{
 			ServerVersion: version,
 			Keys:          memory.NewKeyStore(nil),
+			Buckets:       memory.NewBucketStore(nil),
 		}),
 	}
 
