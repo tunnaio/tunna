@@ -7,12 +7,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/tunnaio/tunna/internal/config"
 	"github.com/tunnaio/tunna/internal/httpapi"
-	"github.com/tunnaio/tunna/internal/memory"
+	"github.com/tunnaio/tunna/internal/sqlite"
 )
 
 // version is the server build version, set at build time with
@@ -37,12 +38,22 @@ func run() error {
 
 	cfg.LogValues(slog.Default())
 
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		return err
+	}
+
+	db, err := sqlite.Open(filepath.Join(cfg.DataDir, "tunna.db"), slog.Default())
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: httpapi.New(httpapi.Options{
 			ServerVersion: version,
-			Keys:          memory.NewKeyStore(nil),
-			Buckets:       memory.NewBucketStore(nil),
+			Keys:          db,
+			Buckets:       db,
 		}),
 	}
 

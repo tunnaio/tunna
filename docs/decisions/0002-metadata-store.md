@@ -350,6 +350,23 @@ What the numbers say:
 **Pinned: `modernc.org/sqlite v1.58.0`.** Revisit if a release of either
 driver changes the picture, by re-running the benchmark module.
 
+### Adapter baseline before group commit (2026-09-11)
+
+`internal/sqlite` with one transaction per write, sixteen goroutines
+calling `CreateBucket` concurrently (`BenchmarkCreateBucketParallel`):
+
+| | |
+|---|---|
+| Per write, wall clock under contention | 1.10 ms |
+| Sustained durable writes per second | about 900 |
+
+The writes serialize on the fsync, as expected: parallel callers do not
+help because each commit waits for the disk. The driver benchmark above
+puts a hundred rows under one fsync at 1.39 ms, so the writer goroutine
+with group commit should land near seventy thousand durable writes per
+second on the same hardware. That is the target for phase C, and the
+same benchmark is the measurement.
+
 ## Action items
 
 1. [x] Maintainer accepted this record 2026-09-09.

@@ -15,9 +15,17 @@ import (
 //     syscall, log, io/fs). io, context, time, errors are types and allowed.
 //   - sig: no module imports; standard library only; no net/http.
 //   - internal/<adapter>: may import the root and sig; never another adapter.
+//     Third-party imports are allowed only where listed in adapterDeps: the
+//     SQLite driver in internal/sqlite (ADR-0002), nothing else yet.
 //   - cmd/tunna: anything.
 
 const modulePath = "github.com/tunnaio/tunna"
+
+// adapterDeps lists the third-party module paths each adapter may import.
+// Adding an entry is a dependency decision and belongs in the ledger.
+var adapterDeps = map[string][]string{
+	"internal/sqlite": {"modernc.org/sqlite"},
+}
 
 type rule struct {
 	allowModule    []string // module import paths allowed, exact
@@ -80,12 +88,26 @@ func checkImports(t *testing.T, dir string, imports []string) {
 		}
 
 		if !inModule && (hasRule || isAdapter) {
+			if allowedDep(rel, imp) {
+				continue
+			}
 			resolved, err := build.Import(imp, "", build.FindOnly)
 			if err != nil || !resolved.Goroot {
-				t.Errorf("%s imports %q, which is not in the standard library", rel, imp)
+				t.Errorf("%s imports %q, which is not in the standard library or in adapterDeps", rel, imp)
 			}
 		}
 	}
+}
+
+// allowedDep reports whether imp is, or is inside, a third-party module the
+// adapter at rel is permitted to import.
+func allowedDep(rel, imp string) bool {
+	for _, dep := range adapterDeps[rel] {
+		if imp == dep || strings.HasPrefix(imp, dep+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // packageDirs lists every directory under the module root that holds Go
