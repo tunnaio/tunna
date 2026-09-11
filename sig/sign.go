@@ -11,7 +11,12 @@ import (
 )
 
 const (
-	Scheme       = "TUNNA1"
+	// Scheme identifies the canonical request layout; bumped if it changes.
+	Scheme = "TUNNA1"
+	// Algorithm names the scheme and MAC together: the Authorization header
+	// prefix and the WWW-Authenticate challenge.
+	Algorithm = Scheme + "-HMAC-SHA256"
+
 	ParamKey     = "x-tunna-key"
 	ParamExpires = "x-tunna-expires"
 	ParamSig     = "x-tunna-sig"
@@ -108,7 +113,7 @@ func Signature(secret, canonical string) string {
 func Authorization(req Request, key Key, timestamp int64) string {
 	signature := Signature(key.Secret, Canonical(req, key, timestamp, Header))
 	headers := strings.Join(signedHeaderNames(req), ";")
-	return Scheme + "-HMAC-SHA256 key=" + key.ID + ", headers=" + headers + ", sig=" + signature
+	return Algorithm + " key=" + key.ID + ", headers=" + headers + ", sig=" + signature
 }
 
 func PresignQuery(req Request, key Key, expires int64) string {

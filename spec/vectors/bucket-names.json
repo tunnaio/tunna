@@ -1,0 +1,28 @@
+{
+  "spec": "0.1.0-draft",
+  "rule": "3 to 63 bytes; only lowercase a-z, digits 0-9 and '-'; must begin and end with a letter or digit.",
+  "cases": [
+    { "name": "abc", "valid": true },
+    { "name": "123", "valid": true, "reason": "digits alone are fine" },
+    { "name": "a1-b2", "valid": true },
+    { "name": "photos-2026", "valid": true },
+    { "name": "a--b", "valid": true, "reason": "consecutive hyphens are allowed; only the ends are constrained" },
+    { "name": "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0", "valid": true, "reason": "exactly 63 bytes" },
+
+    { "name": "", "valid": false, "reason": "empty" },
+    { "name": "ab", "valid": false, "reason": "2 bytes, below the minimum of 3" },
+    { "name": "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz01", "valid": false, "reason": "64 bytes, above the maximum of 63" },
+    { "name": "Abc", "valid": false, "reason": "uppercase" },
+    { "name": "aBc", "valid": false, "reason": "uppercase inside" },
+    { "name": "a_b", "valid": false, "reason": "underscore" },
+    { "name": "a.b", "valid": false, "reason": "dot; not in the allowed set" },
+    { "name": "a b", "valid": false, "reason": "space" },
+    { "name": "-abc", "valid": false, "reason": "leading hyphen; also the reason /-/ can never collide with a bucket" },
+    { "name": "abc-", "valid": false, "reason": "trailing hyphen" },
+    { "name": "---", "valid": false, "reason": "hyphens at both ends" },
+    { "name": "åbc", "valid": false, "reason": "non-ASCII letter" },
+    { "name": "abc\t", "valid": false, "reason": "control character (tab)" },
+    { "name": "a/b", "valid": false, "reason": "path separator" },
+    { "name": "abc%20", "valid": false, "reason": "percent; names are never encoded, they must be plain" }
+  ]
+}

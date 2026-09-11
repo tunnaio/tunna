@@ -3,7 +3,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -68,27 +67,6 @@ var probeMethods = []string{
 	http.MethodPut, http.MethodDelete, http.MethodOptions,
 }
 
-// writeJSON sends v as the JSON body with the given status. Headers must be
-// set before this call; the first byte written freezes them.
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-// writeError sends the wire error body (spec/wire.md section 9). Every error
-// response goes through here so the shape cannot drift. details may be nil;
-// omitempty keeps it out of the body when it is.
-func writeError(w http.ResponseWriter, status int, code, message string, details map[string]any) {
-	writeJSON(w, status, errorBody{
-		Error: errorDetail{
-			Code:    code,
-			Message: message,
-			Details: details,
-		},
-	})
-}
-
 // health answers GET /-/health. Anonymous.
 func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -118,20 +96,8 @@ func (h *handler) notFound(w http.ResponseWriter, r *http.Request) {
 
 	if len(allowed) > 0 {
 		w.Header().Set("Allow", strings.Join(allowed, ", "))
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed for this path", nil)
+		writeError(w, codeMethodNotAllowed, "method not allowed for this path", nil)
 		return
 	}
-	writeError(w, http.StatusNotFound, "unknown_route", "no such route", nil)
-}
-
-// errorDetail is the inner object of the wire error body (spec/wire.md 9).
-type errorDetail struct {
-	Code    string         `json:"code"`
-	Message string         `json:"message"`
-	Details map[string]any `json:"details,omitempty"`
-}
-
-// errorBody is the wire error body: {"error": {...}}.
-type errorBody struct {
-	Error errorDetail `json:"error"`
+	writeError(w, codeUnknownRoute, "no such route", nil)
 }

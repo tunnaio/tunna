@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tunnaio/tunna/spec/vectors/bucket-names.schema.json",
+  "title": "tunna bucket name vectors",
+  "description": "Oracle for the bucket naming rule in wire.md section 1. A validator passes when it accepts every valid case and rejects every invalid one. The reason is documentation for humans; implementations need not reproduce it.",
+  "type": "object",
+  "required": ["spec", "rule", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "type": "string" },
+    "rule": { "type": "string", "description": "The rule in one sentence, restated here so the file stands alone." },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "valid"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "valid": { "type": "boolean" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

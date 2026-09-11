@@ -21,6 +21,13 @@ type credentials struct {
 	signature string
 }
 
+// Every 401 carries the challenge HTTP requires; the value is the scheme and
+// MAC name the client must use, owned by sig.
+const (
+	headerChallengeName  = "WWW-Authenticate"
+	headerChallengeValue = sig.Algorithm
+)
+
 // authenticate is stage 2 of the pipeline (ADR-0004). It verifies any
 // credentials the request carries, in header form or presigned form, and
 // rejects bad ones with the codes from the error table. A request with no
@@ -47,7 +54,7 @@ func (h *handler) authenticate(next http.Handler) http.Handler {
 		}
 
 		if hasAuthorization && hasPresignSig {
-			writeError(w, http.StatusBadRequest, "malformed_request", "request carries both an Authorization header and presigned query parameters; use one", nil)
+			writeError(w, codeMalformedRequest, "request carries both an Authorization header and presigned query parameters; use one", nil)
 			return
 		}
 
@@ -56,18 +63,18 @@ func (h *handler) authenticate(next http.Handler) http.Handler {
 		if mode == sig.Header {
 			ts, err := strconv.ParseInt(r.Header.Get("X-Tunna-Date"), 10, 64)
 			if err != nil {
-				writeError(w, http.StatusBadRequest, "malformed_request", "X-Tunna-Date must be Unix seconds", nil)
+				writeError(w, codeMalformedRequest, "X-Tunna-Date must be Unix seconds", nil)
 				return
 			}
 
 			c, success := parseAuthorization(authorization[0])
 			if !success {
-				writeError(w, http.StatusBadRequest, "malformed_request", "Authorization header is not of the form TUNNA1-HMAC-SHA256 key=<id>, headers=<a;b>, sig=<hex>", nil)
+				writeError(w, codeMalformedRequest, "Authorization header is not of the form "+sig.Algorithm+" key=<id>, headers=<a;b>, sig=<hex>", nil)
 				return
 			}
 
 			if d := time.Unix(ts, 0).Sub(now); d > h.skew || d < -h.skew {
-				writeAuthError(w, "clock_skew", "request timestamp outside the accepted window", map[string]any{
+				writeAuthError(w, codeClockSkew, "request timestamp outside the accepted window", map[string]any{
 					"server_time":  now.Unix(),
 					"skew_seconds": int64(h.skew.Seconds()),
 				})
@@ -81,23 +88,23 @@ func (h *handler) authenticate(next http.Handler) http.Handler {
 		if mode == sig.Presign {
 			c, success := parsePresign(r.URL.Query())
 			if !success {
-				writeError(w, http.StatusBadRequest, "malformed_request", "presigned URL must carry "+sig.ParamKey+" and "+sig.ParamSig, nil)
+				writeError(w, codeMalformedRequest, "presigned URL must carry "+sig.ParamKey+" and "+sig.ParamSig, nil)
 				return
 			}
 
 			ts, err := strconv.ParseInt(r.URL.Query().Get(sig.ParamExpires), 10, 64)
 			if err != nil {
-				writeError(w, http.StatusBadRequest, "malformed_request", sig.ParamExpires+" must be Unix seconds", nil)
+				writeError(w, codeMalformedRequest, sig.ParamExpires+" must be Unix seconds", nil)
 				return
 			}
 			if ts < now.Unix() {
-				writeAuthError(w, "presign_expired", "presigned URL has expired", map[string]any{
+				writeAuthError(w, codePresignExpired, "presigned URL has expired", map[string]any{
 					"server_time": now.Unix(),
 				})
 				return
 			}
 			if ts-now.Unix() > int64(h.maxPresign.Seconds()) {
-				writeAuthError(w, "presign_too_long", "presigned URL expiry is further ahead than this server allows", map[string]any{
+				writeAuthError(w, codePresignTooLong, "presigned URL expiry is further ahead than this server allows", map[string]any{
 					"max_seconds": int64(h.maxPresign.Seconds()),
 				})
 				return
@@ -110,10 +117,10 @@ func (h *handler) authenticate(next http.Handler) http.Handler {
 		apikey, err := h.keys.GetKey(r.Context(), creds.keyID)
 		switch {
 		case errors.Is(err, tunna.ErrNotFound) || (err == nil && apikey.Disabled):
-			writeAuthError(w, "unknown_key", "unknown or disabled key", nil)
+			writeAuthError(w, codeUnknownKey, "unknown or disabled key", nil)
 			return
 		case err != nil:
-			writeError(w, http.StatusInternalServerError, "internal", "key lookup failed", nil)
+			writeError(w, codeInternal, "key lookup failed", nil)
 			return
 		}
 
@@ -122,7 +129,7 @@ func (h *handler) authenticate(next http.Handler) http.Handler {
 				continue
 			}
 
-			writeAuthError(w, "missing_signed_header", "signed header "+name+" is not present on the request", map[string]any{
+			writeAuthError(w, codeMissingSignedHeader, "signed header "+name+" is not present on the request", map[string]any{
 				"header": name,
 			})
 			return
@@ -130,13 +137,13 @@ func (h *handler) authenticate(next http.Handler) http.Handler {
 
 		req, err := sigRequest(r, creds.signed)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "malformed_request", "request path or query cannot be decoded", nil)
+			writeError(w, codeMalformedRequest, "request path or query cannot be decoded", nil)
 			return
 		}
 
 		expected := sig.Signature(apikey.Secret, sig.Canonical(req, sig.Key{ID: apikey.ID, Secret: apikey.Secret}, timestamp, mode))
 		if !hmac.Equal([]byte(expected), []byte(creds.signature)) {
-			writeAuthError(w, "bad_signature", "signature does not match", nil)
+			writeAuthError(w, codeBadSignature, "signature does not match", nil)
 			return
 		}
 
@@ -148,7 +155,7 @@ func (h *handler) authenticate(next http.Handler) http.Handler {
 // "TUNNA1-HMAC-SHA256 key=<id>, headers=<a;b>, sig=<hex>". Every field must
 // appear once, key and sig must be non-empty, and nothing else is accepted.
 func parseAuthorization(value string) (credentials, bool) {
-	rest, ok := strings.CutPrefix(value, sig.Scheme+"-HMAC-SHA256 ")
+	rest, ok := strings.CutPrefix(value, sig.Algorithm+" ")
 	if !ok {
 		return credentials{}, false
 	}
@@ -259,7 +266,7 @@ func sigRequest(r *http.Request, signed []string) (sig.Request, error) {
 
 // writeAuthError is writeError for stage 2: every 401 carries the
 // WWW-Authenticate challenge HTTP requires. details may be nil.
-func writeAuthError(w http.ResponseWriter, code, message string, details map[string]any) {
-	w.Header().Set("WWW-Authenticate", sig.Scheme+"-HMAC-SHA256")
-	writeError(w, http.StatusUnauthorized, code, message, details)
+func writeAuthError(w http.ResponseWriter, code code, message string, details map[string]any) {
+	w.Header().Set(headerChallengeName, headerChallengeValue)
+	writeError(w, code, message, details)
 }
