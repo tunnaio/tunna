@@ -316,12 +316,44 @@ To revisit:
   expressed without SQL, so the adapter is the only package that imports the
   driver.
 
+## Driver benchmark (2026-09-11)
+
+Run on the maintainer's development machine (8-core desktop CPU, NVMe, Windows)
+with `docs/benchmarks/sqlite-driver`: WAL, `synchronous=FULL`, one
+connection, `WITHOUT ROWID` table keyed by (bucket, key).
+
+| Workload | modernc.org/sqlite v1.58.0 | ncruces/go-sqlite3 v0.35.4 |
+|----------|---------------------------:|---------------------------:|
+| Point read by (bucket, key), 100k rows | 10.7 µs | 12.9 µs |
+| Insert, 1 row per commit | 1054 µs | 1053 µs |
+| Insert, 100 rows per commit | 1390 µs | 1672 µs |
+| Prefix scan, 1000 keys ordered | 519 µs | 679 µs |
+
+What the numbers say:
+
+- **A point read is about ten microseconds** through `database/sql` with
+  either driver. The "rounding error next to a file read and a socket write"
+  claim in the context section holds.
+- **A durable commit is about one millisecond** and is the fsync, not the
+  driver: both drivers land on the same figure for one row per commit.
+- **Group commit is worth roughly seventy-five times** on small-object PUT
+  metadata: a hundred rows under one fsync cost 30% more than one row. The
+  writer goroutine is not optional for the performance goal.
+- **modernc is 20 to 30% faster on every workload; ncruces allocates less.**
+  Both are fine for this server. The difference will not be visible behind
+  HTTP, so the choice is on speed as measured and on maturity, and modernc
+  has both.
+- **The cgo driver could not be built on the development machine**, which has
+  no C toolchain. That is the static-binary argument from the decision
+  section, met in practice on day one.
+
+**Pinned: `modernc.org/sqlite v1.58.0`.** Revisit if a release of either
+driver changes the picture, by re-running the benchmark module.
+
 ## Action items
 
-1. [ ] Maintainer accepts, amends, or rejects this record.
-2. [ ] Benchmark the two pure-Go SQLite drivers against the cgo driver on
-       point read, grouped insert with `synchronous=FULL`, and a prefix scan
-       of a thousand keys. Record the numbers in the ledger. Pin the winner.
+1. [x] Maintainer accepted this record 2026-09-09.
+2. [x] Benchmark run 2026-09-11; results above; modernc pinned.
 3. [ ] Write the schema v1 and migration format into the spec.
 4. [ ] Draft the store interface as part of the package layout decision
        (open question 5).
