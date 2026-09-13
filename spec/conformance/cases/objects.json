@@ -1,0 +1,353 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "object-put-get-head-delete",
+      "description": "The whole lifecycle: PUT answers 201 with the record and the checksum headers, GET streams the bytes back with the same headers, HEAD carries headers and no body, DELETE answers 204, and GET afterwards is not found.",
+      "decision": "wire.md 5",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "name": "put",
+          "request": {
+            "method": "PUT", "path": ["empty", "life.txt"], "auth": { "key": "alice" },
+            "headers": { "Content-Type": "text/plain" },
+            "body": { "text": "new body" }
+          },
+          "expect": {
+            "status": 201,
+            "headers": { "ETag": "\"crc32c=WDy7Mw==\"", "X-Tunna-Checksum": "crc32c=WDy7Mw==" },
+            "json": { "bucket": "empty", "key": "life.txt", "size": 8, "content_type": "text/plain", "checksum": "crc32c=WDy7Mw==" },
+            "json_present": ["/created_at"], "json_absent": ["/metadata"]
+          }
+        },
+        {
+          "name": "get",
+          "request": { "method": "GET", "path": ["empty", "life.txt"], "auth": { "key": "alice" } },
+          "expect": {
+            "status": 200,
+            "headers": { "Content-Type": "text/plain", "Content-Length": "8", "ETag": "\"crc32c=WDy7Mw==\"", "X-Tunna-Checksum": "crc32c=WDy7Mw==", "Accept-Ranges": "bytes", "Last-Modified": { "present": true } },
+            "body_sha256": "ae907ab9a383483e5c37beee966723544b9e6f12148a7dcd56ceea7ad44c5a7b"
+          }
+        },
+        {
+          "name": "head",
+          "request": { "method": "HEAD", "path": ["empty", "life.txt"], "auth": { "key": "alice" } },
+          "expect": {
+            "status": 200,
+            "headers": { "Content-Type": "text/plain", "Content-Length": "8", "ETag": "\"crc32c=WDy7Mw==\"" },
+            "body_empty": true
+          }
+        },
+        {
+          "name": "delete",
+          "request": { "method": "DELETE", "path": ["empty", "life.txt"], "auth": { "key": "alice" } },
+          "expect": { "status": 204, "body_empty": true }
+        },
+        {
+          "name": "get-after-delete",
+          "request": { "method": "GET", "path": ["empty", "life.txt"], "auth": { "key": "alice" } },
+          "expect": { "error": "object_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "object-put-with-metadata",
+      "description": "User metadata headers are stored lowercase and come back on GET and in the record.",
+      "decision": "wire.md 5.1",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": {
+            "method": "PUT", "path": ["empty", "meta.txt"], "auth": { "key": "alice" },
+            "headers": { "X-Tunna-Meta-Title": "Summer", "x-tunna-meta-Author": "alice" },
+            "body": { "text": "m" }
+          },
+          "expect": { "status": 201, "json": { "metadata": { "title": "Summer", "author": "alice" } } }
+        },
+        {
+          "request": { "method": "GET", "path": ["empty", "meta.txt"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "headers": { "X-Tunna-Meta-Title": "Summer", "X-Tunna-Meta-Author": "alice" } }
+        },
+        {
+          "request": { "method": "DELETE", "path": ["empty", "meta.txt"], "auth": { "key": "alice" } },
+          "expect": { "status": 204 }
+        }
+      ]
+    },
+    {
+      "name": "object-put-default-content-type",
+      "decision": "wire.md 5.1",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": { "method": "PUT", "path": ["empty", "raw.bin"], "auth": { "key": "alice" }, "body": { "hex": "00ff" } },
+          "expect": { "status": 201, "json": { "content_type": "application/octet-stream", "size": 2 } }
+        },
+        {
+          "request": { "method": "DELETE", "path": ["empty", "raw.bin"], "auth": { "key": "alice" } },
+          "expect": { "status": 204 }
+        }
+      ]
+    },
+    {
+      "name": "object-put-checksum-matches",
+      "description": "A correct signed checksum header is accepted.",
+      "decision": "ADR-0006",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": {
+            "method": "PUT", "path": ["empty", "sum.txt"],
+            "headers": { "X-Tunna-Checksum": "crc32c=WDy7Mw==" },
+            "auth": { "key": "alice", "signed_headers": ["x-tunna-checksum"] },
+            "body": { "text": "new body" }
+          },
+          "expect": { "status": 201 }
+        },
+        {
+          "request": { "method": "DELETE", "path": ["empty", "sum.txt"], "auth": { "key": "alice" } },
+          "expect": { "status": 204 }
+        }
+      ]
+    },
+    {
+      "name": "object-put-checksum-mismatch",
+      "description": "Stage 5: the body's CRC32C differs from the header. Nothing is stored.",
+      "decision": "ADR-0006",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": {
+            "method": "PUT", "path": ["empty", "bad.txt"],
+            "headers": { "X-Tunna-Checksum": "crc32c=AAAAAA==" },
+            "auth": { "key": "alice", "signed_headers": ["x-tunna-checksum"] },
+            "body": { "text": "new body" }
+          },
+          "expect": { "error": "checksum_mismatch", "json": { "error": { "details": { "algorithm": "crc32c" } } } }
+        },
+        {
+          "request": { "method": "GET", "path": ["empty", "bad.txt"], "auth": { "key": "alice" } },
+          "expect": { "error": "object_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "object-put-checksum-malformed",
+      "description": "Stage 4: a header that is not the wire form is rejected before the body is read.",
+      "decision": "wire.md 8",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": {
+            "method": "PUT", "path": ["empty", "bad.txt"],
+            "headers": { "X-Tunna-Checksum": "md5=whatever" },
+            "auth": { "key": "alice" },
+            "body": { "text": "x" }, "expect_continue": true
+          },
+          "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "X-Tunna-Checksum" } } } }
+        }
+      ]
+    },
+    {
+      "name": "object-put-unknown-bucket",
+      "description": "Stage 6: the bucket must exist. The key is valid, so validation passes and state answers.",
+      "decision": "ADR-0004",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": { "method": "PUT", "path": ["no-such-bucket", "a.txt"], "auth": { "key": "alice" }, "body": { "text": "x" }, "expect_continue": true },
+          "expect": { "error": "bucket_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "object-put-invalid-key",
+      "description": "Stage 4: a key over 1024 bytes is rejected before the bucket is consulted.",
+      "decision": "wire.md 1",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": { "method": "PUT", "path": ["empty", "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"], "auth": { "key": "alice" }, "body": { "text": "x" }, "expect_continue": true },
+          "expect": { "error": "invalid_key" }
+        }
+      ]
+    },
+    {
+      "name": "object-put-requires-credentials",
+      "decision": "ADR-0004",
+      "fixtures": ["empty"],
+      "steps": [
+        {
+          "request": { "method": "PUT", "path": ["empty", "anon.txt"], "auth": "none", "body": { "text": "x" }, "expect_continue": true },
+          "expect": { "error": "unauthenticated" }
+        }
+      ]
+    },
+    {
+      "name": "object-overwrite-replaces-bytes-and-etag",
+      "decision": "ADR-0007",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": { "method": "PUT", "path": ["empty", "ow.txt"], "auth": { "key": "alice" }, "body": { "text": "new body" } },
+          "expect": { "status": 201, "headers": { "ETag": "\"crc32c=WDy7Mw==\"" } }
+        },
+        {
+          "request": { "method": "PUT", "path": ["empty", "ow.txt"], "auth": { "key": "alice" }, "body": { "text": "overwritten" } },
+          "expect": { "status": 201, "json": { "size": 11 } }
+        },
+        {
+          "request": { "method": "GET", "path": ["empty", "ow.txt"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "headers": { "Content-Length": "11" }, "body_sha256": "fb428d788e6efaec29dc4a9b3d0b3cf3d2295eb7ffc30f111ac11c4af1dfc118" }
+        },
+        {
+          "request": { "method": "DELETE", "path": ["empty", "ow.txt"], "auth": { "key": "alice" } },
+          "expect": { "status": 204 }
+        }
+      ]
+    },
+    {
+      "name": "object-get-fixture-text",
+      "description": "A provisioned object reads back byte for byte with its content type.",
+      "decision": "wire.md 5.2",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos", "hello.txt"], "auth": { "key": "alice" } },
+          "expect": {
+            "status": 200,
+            "headers": { "Content-Type": "text/plain", "Content-Length": "13", "X-Tunna-Checksum": "crc32c=DyUvyA==" },
+            "body_sha256": "ddf151a8fa3f385c38a688910dc77de461707c3f13cd51c3560f31ec0866b57d"
+          }
+        }
+      ]
+    },
+    {
+      "name": "object-get-fixture-generated-bytes",
+      "description": "A 64 KiB generated object streams back exactly.",
+      "decision": "wire.md 5.2",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos", "2026/one.bin"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "headers": { "Content-Length": "65536" }, "body_bytes": { "seed": 1, "length": 65536 } }
+        }
+      ]
+    },
+    {
+      "name": "object-get-key-with-slash-is-one-segment",
+      "description": "The key 2026/one.bin travels as one encoded segment (2026%2Fone.bin) and is signed that way.",
+      "decision": "wire.md 1",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "HEAD", "path": ["photos", "2026/one.bin"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "headers": { "Content-Length": "65536" } }
+        }
+      ]
+    },
+    {
+      "name": "object-get-range",
+      "description": "A single byte range answers 206 with Content-Range and only those bytes.",
+      "decision": "wire.md 5.2",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos", "hello.txt"], "headers": { "Range": "bytes=0-4" }, "auth": { "key": "alice" } },
+          "expect": {
+            "status": 206,
+            "headers": { "Content-Range": "bytes 0-4/13", "Content-Length": "5" },
+            "body_sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+          }
+        },
+        {
+          "request": { "method": "GET", "path": ["photos", "hello.txt"], "headers": { "Range": "bytes=100-200" }, "auth": { "key": "alice" } },
+          "expect": { "status": 416, "headers": { "Content-Range": "bytes */13" } }
+        }
+      ]
+    },
+    {
+      "name": "object-get-if-none-match",
+      "decision": "wire.md 5.2",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos", "hello.txt"], "headers": { "If-None-Match": "\"crc32c=DyUvyA==\"" }, "auth": { "key": "alice" } },
+          "expect": { "status": 304, "body_empty": true }
+        }
+      ]
+    },
+    {
+      "name": "object-get-not-found",
+      "decision": "wire.md 5.2",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos", "nope.txt"], "auth": { "key": "alice" } },
+          "expect": { "error": "object_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "object-get-unknown-bucket",
+      "decision": "wire.md 5.2",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["no-such-bucket", "a.txt"], "auth": { "key": "alice" } },
+          "expect": { "error": "bucket_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "object-delete-not-found",
+      "decision": "wire.md 5.4",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "DELETE", "path": ["photos", "nope.txt"], "auth": { "key": "alice" } },
+          "expect": { "error": "object_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "object-public-bucket-anonymous-read",
+      "description": "A read on a public bucket needs no credentials; a write still does.",
+      "decision": "wire.md 5.2",
+      "fixtures": ["public-site"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["public-site", "index.html"], "auth": "none" },
+          "expect": { "status": 200, "headers": { "Content-Type": "text/html" }, "body_sha256": "388181bddd832fb29c6750089fe29fc5b4f0977e87d15c187ea13ca0578f41ae" }
+        },
+        {
+          "request": { "method": "PUT", "path": ["public-site", "new.html"], "auth": "none", "body": { "text": "x" }, "expect_continue": true },
+          "expect": { "error": "unauthenticated" }
+        }
+      ]
+    },
+    {
+      "name": "object-private-bucket-anonymous-read",
+      "decision": "wire.md 5.2",
+      "fixtures": ["photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos", "hello.txt"], "auth": "none" },
+          "expect": { "error": "unauthenticated" }
+        }
+      ]
+    },
+    {
+      "name": "object-get-with-presigned-url",
+      "decision": "ADR-0003",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos", "hello.txt"], "auth": { "presign": { "key": "alice", "expires_in_seconds": 300 } } },
+          "expect": { "status": 200, "headers": { "Content-Length": "13" } }
+        }
+      ]
+    }
+  ]
+}

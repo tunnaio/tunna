@@ -10,11 +10,13 @@ package httpapi_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +30,7 @@ import (
 	"time"
 
 	"github.com/tunnaio/tunna"
+	"github.com/tunnaio/tunna/internal/disk"
 	"github.com/tunnaio/tunna/internal/httpapi"
 	"github.com/tunnaio/tunna/internal/memory"
 	"github.com/tunnaio/tunna/sig"
@@ -105,10 +108,57 @@ type fixtures struct {
 		Disabled bool   `json:"disabled"`
 	} `json:"keys"`
 	Buckets map[string]struct {
-		Name    string          `json:"name"`
-		Public  bool            `json:"public"`
-		Objects json.RawMessage `json:"objects"` // provisioned once an object store exists
+		Name    string `json:"name"`
+		Public  bool   `json:"public"`
+		Objects []struct {
+			Key         string    `json:"key"`
+			ContentType string    `json:"content_type"`
+			Text        *string   `json:"text"`
+			Bytes       *genBytes `json:"bytes"`
+		} `json:"objects"`
 	} `json:"buckets"`
+}
+
+// fixtureObjects writes every fixture object's bytes into blobs and returns
+// the metadata rows pointing at them, checksummed the way the server would.
+func fixtureObjects(t *testing.T, fx fixtures, blobs tunna.BlobStore, createdAt time.Time) []tunna.Object {
+	t.Helper()
+	ctx := context.Background()
+	table := crc32.MakeTable(crc32.Castagnoli)
+	var out []tunna.Object
+	for bucketKey, b := range fx.Buckets {
+		bucket := b.Name
+		if bucket == "" {
+			bucket = bucketKey
+		}
+		for _, o := range b.Objects {
+			var data []byte
+			switch {
+			case o.Text != nil:
+				data = []byte(*o.Text)
+			case o.Bytes != nil:
+				data = generate(o.Bytes.Seed, o.Bytes.Length)
+			}
+			id, err := blobs.Create(ctx)
+			if err != nil {
+				t.Fatalf("fixture %s/%s: Create: %v", bucket, o.Key, err)
+			}
+			if _, err := blobs.Write(ctx, id, 0, bytes.NewReader(data)); err != nil {
+				t.Fatalf("fixture %s/%s: Write: %v", bucket, o.Key, err)
+			}
+			ct := o.ContentType
+			if ct == "" {
+				ct = "application/octet-stream"
+			}
+			out = append(out, tunna.Object{
+				Bucket: bucket, Key: o.Key, BlobID: id,
+				Size: int64(len(data)), ContentType: ct,
+				Checksum:  sig.EncodeCRC32C(crc32.Checksum(data, table)),
+				CreatedAt: createdAt,
+			})
+		}
+	}
+	return out
 }
 
 // fixtureBuckets returns the bucket fixtures as the server should hold them
@@ -177,6 +227,11 @@ func TestConformance(t *testing.T) {
 
 	// The server under test knows every fixture key, disabled ones included,
 	// exactly as fixtures.json describes them.
+	blobs, err := disk.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("disk.New: %v", err)
+	}
+
 	var keys []tunna.APIKey
 	for _, k := range fx.Keys {
 		keys = append(keys, tunna.APIKey{ID: k.ID, Secret: k.Secret, Disabled: k.Disabled})
@@ -185,6 +240,8 @@ func TestConformance(t *testing.T) {
 		ServerVersion: "test",
 		Keys:          memory.NewKeyStore(keys),
 		Buckets:       memory.NewBucketStore(fixtureBuckets(fx, time.Now())),
+		Objects:       memory.NewObjectStore(fixtureObjects(t, fx, blobs, time.Now())),
+		Blobs:         blobs,
 	}))
 	defer srv.Close()
 
@@ -208,26 +265,17 @@ func TestConformance(t *testing.T) {
 	}
 }
 
-// unsupported returns a reason to skip a case the harness cannot yet serve.
-// Keys and buckets are provisioned into the server before any case runs;
-// objects inside buckets wait for an object store.
+// unsupported returns a reason to skip a case the harness cannot serve.
+// Every fixture kind is provisioned into the server before any case runs,
+// so the only reason left is a fixture name the file does not define.
 func unsupported(c conformanceCase, fx fixtures) string {
-	names := []string{}
 	if c.Fixtures == nil {
-		for name := range fx.Buckets {
-			names = append(names, name)
-		}
-	} else {
-		names = *c.Fixtures
+		return ""
 	}
-	for _, name := range names {
-		if b, ok := fx.Buckets[name]; ok {
-			if len(b.Objects) > 0 && string(b.Objects) != "[]" {
-				return "bucket fixture " + name + " holds objects; no object store yet"
-			}
-			continue
-		}
-		if _, ok := fx.Keys[name]; !ok {
+	for _, name := range *c.Fixtures {
+		_, isBucket := fx.Buckets[name]
+		_, isKey := fx.Keys[name]
+		if !isBucket && !isKey {
 			return "unknown fixture " + name
 		}
 	}

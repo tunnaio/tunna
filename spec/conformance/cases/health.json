@@ -50,6 +50,18 @@
       ]
     },
     {
+      "name": "wrong-method-under-reserved-prefix-is-unknown-route",
+      "description": "POST /-/nothing matches no control-plane route. The object wildcard must not make it look like a known path with the wrong method: /-/ is reserved (wire.md 1).",
+      "decision": "wire.md 1",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": { "method": "POST", "path": ["-", "nothing"], "auth": "none" },
+          "expect": { "error": "unknown_route" }
+        }
+      ]
+    },
+    {
       "name": "version-reports-spec",
       "description": "The version endpoint names the spec version the server conforms to.",
       "decision": "spec/README.md",

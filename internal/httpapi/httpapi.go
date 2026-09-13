@@ -16,9 +16,24 @@ type Options struct {
 	ServerVersion string         // reported by GET /-/version
 	Keys          tunna.KeyStore // where stage 2 looks up API keys
 	Buckets       tunna.BucketStore
+	Objects       tunna.ObjectStore
+	Blobs         tunna.BlobStore
 	Now           func() time.Time // clock; nil means time.Now
 	Skew          time.Duration    // accepted X-Tunna-Date drift; 0 means 15 minutes
 	MaxPresign    time.Duration    // longest presigned lifetime; 0 means 7 days
+}
+
+// handler carries the dependencies the route methods need.
+type handler struct {
+	mux           *http.ServeMux
+	serverVersion string
+	keys          tunna.KeyStore
+	buckets       tunna.BucketStore
+	objects       tunna.ObjectStore
+	blobs         tunna.BlobStore
+	now           func() time.Time
+	skew          time.Duration
+	maxPresign    time.Duration
 }
 
 // New builds the HTTP handler for the server: the routes, wrapped in the
@@ -40,6 +55,8 @@ func New(o Options) http.Handler {
 		serverVersion: o.ServerVersion,
 		keys:          o.Keys,
 		buckets:       o.Buckets,
+		objects:       o.Objects,
+		blobs:         o.Blobs,
 		now:           o.Now,
 		skew:          o.Skew,
 		maxPresign:    o.MaxPresign,
@@ -54,20 +71,33 @@ func New(o Options) http.Handler {
 	mux.HandleFunc("PUT /-/buckets/{bucket}", requireAuth(h.createBucket))
 	mux.HandleFunc("DELETE /-/buckets/{bucket}", requireAuth(h.deleteBucket))
 
+	// object routes
+	mux.HandleFunc("PUT /{bucket}/{key...}", reserved(requireAuth(h.putObject)))
+	mux.HandleFunc("GET /{bucket}/{key...}", reserved(h.getObject))
+	mux.HandleFunc("DELETE /{bucket}/{key...}", reserved(requireAuth(h.deleteObject)))
+
 	mux.HandleFunc("/", h.notFound)
 
 	return h.authenticate(mux)
 }
 
-// handler carries the dependencies the route methods need.
-type handler struct {
-	mux           *http.ServeMux
-	serverVersion string
-	keys          tunna.KeyStore
-	buckets       tunna.BucketStore
-	now           func() time.Time
-	skew          time.Duration
-	maxPresign    time.Duration
+// reserved is stage 1's routing rule: "/-/" is the control plane, so an
+// object path whose bucket segment is "-" is an unknown route, answered
+// before authentication as the ladder requires.
+// reserved is stage 1's routing rule: "/-/" is the control plane, so an
+// object path whose bucket segment is "-" is an unknown route, answered
+// before authentication as the ladder requires. The mux cannot express this
+// itself: a "/-/" pattern and the method-specific object wildcards are
+// neither more nor less specific than each other, and registering both
+// panics.
+func reserved(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("bucket") == "-" {
+			writeError(w, codeUnknownRoute, "no such route", nil)
+			return
+		}
+		next(w, r)
+	}
 }
 
 // probeMethods is the fixed list notFound tries when deciding between "no
@@ -91,6 +121,22 @@ func (h *handler) version(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// counts reports whether a matched pattern proves the request path exists.
+// The catch-all proves nothing, and under the reserved prefix neither does
+// the object wildcard: "-" is a legal bucket segment to the mux but not to us.
+// counts reports whether a matched pattern proves the request path exists.
+// The catch-all proves nothing, and under the reserved prefix neither does
+// the object wildcard: "-" is a legal bucket segment to the mux but not to us.
+func counts(path, pattern string) bool {
+	if pattern == "" || pattern == "/" {
+		return false
+	}
+	if strings.HasPrefix(path, "/-/") && strings.Contains(pattern, "{bucket}/{key") {
+		return false
+	}
+	return true
+}
+
 // notFound is the catch-all. It distinguishes an unknown path from a known
 // path with the wrong method by asking the mux what other methods would have
 // matched, so the Allow header is accurate (spec/wire.md 4).
@@ -99,7 +145,7 @@ func (h *handler) notFound(w http.ResponseWriter, r *http.Request) {
 	for _, m := range probeMethods {
 		probe := r.Clone(r.Context())
 		probe.Method = m
-		if _, pattern := h.mux.Handler(probe); pattern != "" && pattern != "/" {
+		if _, pattern := h.mux.Handler(probe); counts(r.URL.Path, pattern) {
 			allowed = append(allowed, m)
 		}
 	}

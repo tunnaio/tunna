@@ -14,7 +14,9 @@ import (
 
 	"github.com/tunnaio/tunna"
 	"github.com/tunnaio/tunna/internal/config"
+	"github.com/tunnaio/tunna/internal/disk"
 	"github.com/tunnaio/tunna/internal/httpapi"
+	"github.com/tunnaio/tunna/internal/memory"
 	"github.com/tunnaio/tunna/internal/sqlite"
 )
 
@@ -57,12 +59,19 @@ func run() error {
 		slog.Info("bootstrap key upserted", "id", cfg.BootstrapKeyID)
 	}
 
+	blobs, err := disk.New(cfg.DataDir)
+	if err != nil {
+		return err
+	}
+
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: httpapi.New(httpapi.Options{
 			ServerVersion: version,
 			Keys:          db,
 			Buckets:       db,
+			Objects:       memory.NewObjectStore(nil),
+			Blobs:         blobs,
 		}),
 	}
 
