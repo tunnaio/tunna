@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/tunnaio/tunna"
@@ -32,6 +33,14 @@ type objectRecord struct {
 	Checksum    string            `json:"checksum"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 	CreatedAt   int64             `json:"created_at"`
+}
+
+// listResponse is the wire shape of a listing (spec/wire.md 7). Objects is
+// built non-nil so an empty page encodes as [], and Next is omitted unless
+// the page is full.
+type listResponse struct {
+	Objects []objectRecord `json:"objects"`
+	Next    string         `json:"next,omitempty"`
 }
 
 // toObjectRecord converts a domain object to its wire shape.
@@ -209,12 +218,8 @@ func (h *handler) getObject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, codeInternal, "bucket lookup failed", nil)
 		return
 	}
-	if !b.Public {
-		_, ok := r.Context().Value(callerKey{}).(tunna.APIKey)
-		if !ok {
-			writeAuthError(w, codeUnauthenticated, "reading from a private bucket requires credentials", nil)
-			return
-		}
+	if !h.allowRead(w, r, b) {
+		return
 	}
 	obj, err := h.objects.GetObject(r.Context(), bucket, key)
 	if errors.Is(err, tunna.ErrNotFound) {
@@ -282,4 +287,74 @@ func (h *handler) deleteObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// listObjects answers GET /{bucket}: keys in bytewise order, filtered by
+// prefix, paged by after and limit. delimiter is rejected until grouping is
+// specified, so no client can depend on its absence by accident.
+func (h *handler) listObjects(w http.ResponseWriter, r *http.Request) {
+	bucket := r.PathValue("bucket")
+
+	if err := tunna.ValidateBucketName(bucket); err != nil {
+		writeError(w, codeInvalidBucketName, err.Error(), nil)
+		return
+	}
+
+	q := r.URL.Query()
+	if q.Has("delimiter") {
+		writeError(w, codeInvalidParameter, "delimiter is not supported in this version", map[string]any{
+			"name": "delimiter",
+		})
+		return
+	}
+	var limit int
+	prefix := q.Get("prefix")
+	after := q.Get("after")
+	if q.Has("limit") {
+		raw := q.Get("limit")
+		l, err := strconv.Atoi(raw)
+		if err != nil {
+			writeError(w, codeInvalidParameter, "limit must be an integer", map[string]any{
+				"name": "limit",
+			})
+			return
+		}
+		if l <= 0 {
+			writeError(w, codeInvalidParameter, "limit must be at least 1", map[string]any{
+				"name": "limit",
+			})
+			return
+		}
+		limit = min(l, 1000)
+	} else {
+		limit = 1000
+	}
+
+	b, err := h.buckets.GetBucket(r.Context(), bucket)
+	if errors.Is(err, tunna.ErrNotFound) {
+		writeError(w, codeBucketNotFound, "no bucket named "+bucket, map[string]any{"bucket": bucket})
+		return
+	}
+	if err != nil {
+		writeError(w, codeInternal, "bucket lookup failed", nil)
+		return
+	}
+	if !h.allowRead(w, r, b) {
+		return
+	}
+	list, err := h.objects.ListObjects(r.Context(), bucket, prefix, after, limit)
+	if err != nil {
+		writeError(w, codeInternal, "object lookup failed", nil)
+		return
+	}
+	response := listResponse{
+		Objects: make([]objectRecord, 0, len(list)),
+	}
+	if len(list) == limit {
+		response.Next = list[len(list)-1].Key
+	}
+	for _, o := range list {
+		response.Objects = append(response.Objects, toObjectRecord(o))
+	}
+	writeJSON(w, http.StatusOK, response)
 }

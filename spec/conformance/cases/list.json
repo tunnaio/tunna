@@ -1,0 +1,135 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "list-all-in-key-order",
+      "description": "The photos fixture holds hello.txt, 2026/one.bin and 2026/two.bin; bytewise order puts the digit-led keys first. No next on a partial page.",
+      "decision": "wire.md 7",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos"], "auth": { "key": "alice" } },
+          "expect": {
+            "status": 200,
+            "json": { "objects": [
+              { "key": "2026/one.bin", "size": 65536, "content_type": "application/octet-stream" },
+              { "key": "2026/two.bin", "size": 65536 },
+              { "key": "hello.txt", "size": 13, "content_type": "text/plain" }
+            ] },
+            "json_absent": ["/next"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "list-prefix",
+      "decision": "wire.md 7",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos"], "query": [["prefix", "2026/"]], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "objects": [ { "key": "2026/one.bin" }, { "key": "2026/two.bin" } ] } }
+        },
+        {
+          "request": { "method": "GET", "path": ["photos"], "query": [["prefix", "nothing-starts-with-this"]], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "objects": [] } }
+        }
+      ]
+    },
+    {
+      "name": "list-pages-with-limit-and-after",
+      "description": "limit 2 fills the first page, so next is the last key; after that key yields the remaining one with no next; after the last key yields an empty page.",
+      "decision": "wire.md 7",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "name": "page-1",
+          "request": { "method": "GET", "path": ["photos"], "query": [["limit", "2"]], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "objects": [ { "key": "2026/one.bin" }, { "key": "2026/two.bin" } ], "next": "2026/two.bin" } },
+          "capture": { "cursor": "/next" }
+        },
+        {
+          "name": "page-2",
+          "request": { "method": "GET", "path": ["photos"], "query": [["limit", "2"], ["after", "{{cursor}}"]], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "objects": [ { "key": "hello.txt" } ] }, "json_absent": ["/next"] }
+        },
+        {
+          "name": "page-3-empty",
+          "request": { "method": "GET", "path": ["photos"], "query": [["limit", "2"], ["after", "hello.txt"]], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "objects": [] }, "json_absent": ["/next"] }
+        }
+      ]
+    },
+    {
+      "name": "list-limit-invalid",
+      "decision": "wire.md 7",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos"], "query": [["limit", "0"]], "auth": { "key": "alice" } },
+          "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "limit" } } } }
+        },
+        {
+          "request": { "method": "GET", "path": ["photos"], "query": [["limit", "ten"]], "auth": { "key": "alice" } },
+          "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "limit" } } } }
+        }
+      ]
+    },
+    {
+      "name": "list-delimiter-not-yet-specified",
+      "description": "A delimiter parameter is rejected so no client depends on grouping being absent by accident.",
+      "decision": "wire.md 7",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos"], "query": [["delimiter", "/"]], "auth": { "key": "alice" } },
+          "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "delimiter" } } } }
+        }
+      ]
+    },
+    {
+      "name": "list-unknown-bucket",
+      "decision": "wire.md 7",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["no-such-bucket"], "auth": { "key": "alice" } },
+          "expect": { "error": "bucket_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "list-requires-credentials-on-private-bucket",
+      "decision": "wire.md 7",
+      "fixtures": ["photos"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["photos"], "auth": "none" },
+          "expect": { "error": "unauthenticated" }
+        }
+      ]
+    },
+    {
+      "name": "list-public-bucket-anonymous",
+      "decision": "wire.md 7",
+      "fixtures": ["public-site"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["public-site"], "auth": "none" },
+          "expect": { "status": 200, "json": { "objects": [ { "key": "index.html", "content_type": "text/html" } ] } }
+        }
+      ]
+    },
+    {
+      "name": "list-empty-bucket",
+      "decision": "wire.md 7",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["empty"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "objects": [] }, "json_absent": ["/next"] }
+        }
+      ]
+    }
+  ]
+}

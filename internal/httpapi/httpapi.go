@@ -75,6 +75,7 @@ func New(o Options) http.Handler {
 	mux.HandleFunc("PUT /{bucket}/{key...}", reserved(requireAuth(h.putObject)))
 	mux.HandleFunc("GET /{bucket}/{key...}", reserved(h.getObject))
 	mux.HandleFunc("DELETE /{bucket}/{key...}", reserved(requireAuth(h.deleteObject)))
+	mux.HandleFunc("GET /{bucket}", reserved(h.listObjects))
 
 	mux.HandleFunc("/", h.notFound)
 

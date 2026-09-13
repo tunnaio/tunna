@@ -176,7 +176,7 @@ bucket that still holds objects or active uploads is `bucket_not_empty`.
 | `GET /{bucket}/{key}` | Fetch. Supports `Range`. |
 | `HEAD /{bucket}/{key}` | Metadata only. |
 | `DELETE /{bucket}/{key}` | Delete. |
-| `GET /{bucket}?list&prefix=&delimiter=&after=&limit=` | List keys. Ordered by key. `delimiter` groups common prefixes. |
+| `GET /{bucket}` | List objects (section 7). |
 
 ### 5.1 Single-request PUT
 
@@ -286,10 +286,32 @@ default 24 hours, and are collected.
 
 ## 7. Listing
 
-`GET /{bucket}?list` returns objects ordered by key, as a JSON array of
-metadata records plus `common_prefixes` when a delimiter is given, plus
-`next` when the page is full. Pagination is by `after=<last key seen>`.
-`limit` defaults to 1000 and is capped by the server.
+`GET /{bucket}` lists the bucket's objects in bytewise key order. Requires
+credentials unless the bucket is public, the same rule as an object read.
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `prefix` | empty | Only keys that start with this string. |
+| `after` | empty | Only keys that sort strictly after this string; pass the last key of the previous page. |
+| `limit` | 1000 | Page size, 1 to the server's maximum (default 1000); above it is clamped, below 1 or not an integer is `invalid_parameter` with `details.name` set to `limit`. |
+
+Response `200`:
+
+```json
+{ "objects": [ record, ... ], "next": "2026/two.bin" }
+```
+
+`objects` is the page as object records (section 5.3), `[]` when empty.
+`next` is present only when the page holds `limit` records, and equals the
+last key in it; a client passes it as `after` to continue. A final page of
+exactly `limit` records therefore yields one more, empty page.
+
+An unknown bucket is `bucket_not_found`.
+
+**Delimiter grouping** (folding `a/b/c` and `a/b/d` into a common prefix
+`a/b/`) is not specified in this version. A `delimiter` parameter is
+`invalid_parameter` until it is, so that a client cannot depend on the
+absence of grouping by accident.
 
 ## 8. Checksums [ADR-0006]
 

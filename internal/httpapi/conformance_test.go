@@ -4,9 +4,11 @@ package httpapi_test
 // handler built by httpapi.New, the same constructor cmd/tunna uses.
 //
 // Requests are signed with package sig using the keys in fixtures.json.
-// Cases that need provisioned buckets or objects are skipped with a reason
-// until a store adapter exists. When the store adapters land, this file
-// moves to where it may import them (ADR-0005, rule 7).
+// Every case gets a fresh server with every fixture provisioned (keys,
+// buckets, objects with bytes in a real disk store), so cases cannot affect
+// each other and a case may mutate a fixture freely. Metadata lives in the
+// memory stores here: this suite tests the wire; persistence has its own
+// tests in internal/sqlite and cmd/tunna.
 
 import (
 	"bytes"
@@ -225,26 +227,6 @@ func TestConformance(t *testing.T) {
 		t.Fatalf("no case files under %s: %v", specDir, err)
 	}
 
-	// The server under test knows every fixture key, disabled ones included,
-	// exactly as fixtures.json describes them.
-	blobs, err := disk.New(t.TempDir())
-	if err != nil {
-		t.Fatalf("disk.New: %v", err)
-	}
-
-	var keys []tunna.APIKey
-	for _, k := range fx.Keys {
-		keys = append(keys, tunna.APIKey{ID: k.ID, Secret: k.Secret, Disabled: k.Disabled})
-	}
-	srv := httptest.NewServer(httpapi.New(httpapi.Options{
-		ServerVersion: "test",
-		Keys:          memory.NewKeyStore(keys),
-		Buckets:       memory.NewBucketStore(fixtureBuckets(fx, time.Now())),
-		Objects:       memory.NewObjectStore(fixtureObjects(t, fx, blobs, time.Now())),
-		Blobs:         blobs,
-	}))
-	defer srv.Close()
-
 	for _, file := range files {
 		var cf caseFile
 		if err := json.Unmarshal([]byte(mustRead(t, file)), &cf); err != nil {
@@ -259,10 +241,40 @@ func TestConformance(t *testing.T) {
 				if reason := unsupported(c, fx); reason != "" {
 					t.Skip(reason)
 				}
+				// A fresh server per case: fixtures provisioned as fixtures.json
+				// describes them, so no case can poison another through shared
+				// state, and a case that mutates a fixture is still a valid case.
+				srv := newServer(t, fx)
+				defer srv.Close()
 				runCase(t, srv, c, statusOf, fx)
 			})
 		}
 	}
+}
+
+// newServer builds the server under test with every fixture provisioned:
+// keys (disabled ones included), buckets, and objects with their bytes in a
+// real disk store. Memory stores for metadata, since the conformance suite
+// tests the wire, not persistence; the SQLite adapter has its own contract
+// tests and cmd/tunna has the restart tests.
+func newServer(t *testing.T, fx fixtures) *httptest.Server {
+	t.Helper()
+	blobs, err := disk.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("disk.New: %v", err)
+	}
+	var keys []tunna.APIKey
+	for _, k := range fx.Keys {
+		keys = append(keys, tunna.APIKey{ID: k.ID, Secret: k.Secret, Disabled: k.Disabled})
+	}
+	now := time.Now()
+	return httptest.NewServer(httpapi.New(httpapi.Options{
+		ServerVersion: "test",
+		Keys:          memory.NewKeyStore(keys),
+		Buckets:       memory.NewBucketStore(fixtureBuckets(fx, now)),
+		Objects:       memory.NewObjectStore(fixtureObjects(t, fx, blobs, now)),
+		Blobs:         blobs,
+	}))
 }
 
 // unsupported returns a reason to skip a case the harness cannot serve.

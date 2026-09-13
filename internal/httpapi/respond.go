@@ -3,6 +3,8 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/tunnaio/tunna"
 )
 
 // writeJSON sends v as the JSON body with the given status. Headers must be
@@ -29,4 +31,19 @@ func writeError(w http.ResponseWriter, c code, message string, details map[strin
 			Details: details,
 		},
 	})
+}
+
+// allowRead is the read rule for buckets (spec/wire.md 5.2 and 7): a public
+// bucket needs no caller, any other needs one. It writes the unauthenticated
+// error itself and reports false, so a handler just returns. Decided here
+// rather than by requireAuth because the answer depends on the bucket.
+func (h *handler) allowRead(w http.ResponseWriter, r *http.Request, b tunna.Bucket) bool {
+	if !b.Public {
+		_, ok := r.Context().Value(callerKey{}).(tunna.APIKey)
+		if !ok {
+			writeAuthError(w, codeUnauthenticated, "reading from a private bucket requires credentials", nil)
+			return false
+		}
+	}
+	return true
 }

@@ -120,7 +120,23 @@ func (h *handler) deleteBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.buckets.DeleteBucket(r.Context(), name)
+	// One object is enough to refuse. A PUT landing between this check and the
+	// delete would slip past it; the SQLite foreign key refuses that delete and
+	// it surfaces as internal, and the single writer of ADR-0002 phase C closes
+	// the window properly.
+	objs, err := h.objects.ListObjects(r.Context(), name, "", "", 1)
+	if err != nil {
+		writeError(w, codeInternal, "bucket delete failed", nil)
+		return
+	}
+	if len(objs) > 0 {
+		writeError(w, codeBucketNotEmpty, "bucket still holds objects", map[string]any{
+			"bucket": name,
+		})
+		return
+	}
+
+	err = h.buckets.DeleteBucket(r.Context(), name)
 	switch {
 	case errors.Is(err, tunna.ErrNotFound):
 		writeError(w, codeBucketNotFound, "bucket not found", map[string]any{
