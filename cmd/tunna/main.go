@@ -16,7 +16,6 @@ import (
 	"github.com/tunnaio/tunna/internal/config"
 	"github.com/tunnaio/tunna/internal/disk"
 	"github.com/tunnaio/tunna/internal/httpapi"
-	"github.com/tunnaio/tunna/internal/memory"
 	"github.com/tunnaio/tunna/internal/sqlite"
 )
 
@@ -70,7 +69,7 @@ func run() error {
 			ServerVersion: version,
 			Keys:          db,
 			Buckets:       db,
-			Objects:       memory.NewObjectStore(nil),
+			Objects:       db,
 			Blobs:         blobs,
 		}),
 	}

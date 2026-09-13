@@ -63,3 +63,19 @@ func TestPutKeyUpserts(t *testing.T) {
 		t.Errorf("rows for tk_x = %d with secret %q, want 1 row with two", n, secret)
 	}
 }
+
+// The objects table references buckets, and the contract puts objects into
+// "photos" and "docs" without creating them: stores trust their callers,
+// and here the caller guarantees the bucket exists. The factory keeps that
+// guarantee so the foreign key is exercised, not bypassed.
+func TestObjectStoreContract(t *testing.T) {
+	storetest.ObjectStore(t, func(t *testing.T) tunna.ObjectStore {
+		db, _ := openFresh(t)
+		for _, name := range []string{"photos", "docs"} {
+			if err := db.CreateBucket(context.Background(), tunna.Bucket{Name: name}); err != nil {
+				t.Fatalf("seed bucket %s: %v", name, err)
+			}
+		}
+		return db
+	})
+}
