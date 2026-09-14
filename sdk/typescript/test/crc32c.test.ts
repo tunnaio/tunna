@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { combine, crc32c, encodeChecksum, parseChecksum } from "../src/crc32c.ts";
 import { inputBytes, loadSpec, specVersion } from "./vectors.ts";
 
-type Input = { text?: string; hex?: string; bytes?: number[] };
+import type { Input } from "./vectors.ts";
 type Single = { name: string; input: Input; crc32c_hex: string; wire: string };
 type Combine = {
   name: string;

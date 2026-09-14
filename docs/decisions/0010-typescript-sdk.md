@@ -287,6 +287,7 @@ To revisit:
 4. [x] `sdk/typescript` scaffold, 2026-09-15: package.json, tsconfig, tsdown,
        generated errors, stubs with the API fixed, 89 vector tests of which
        81 fail against the stubs, Node smoke scripts, CI job.
-5. [ ] `encode`, `sign`, `crc32c` until the vector tests pass.
+5. [x] `encode`, `sign`, `crc32c`, 2026-09-15: 89 of 89 vector tests, Node
+       smoke green in both formats.
 6. [ ] The client, then the conformance test, then `upload`.
 7. [ ] README for the package; the repo README's SDK table gains a row.
