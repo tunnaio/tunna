@@ -34,14 +34,33 @@ objects over loopback is memory bandwidth and the kernel's socket path;
 `ServeContent` streams straight from the file. The server's per-byte cost
 is not measurable here.
 
-**Small reads have a per-request cost worth looking at.** 1.1 ms median for
-a 4 KiB GET on loopback is higher than the byte path explains; the 1 MiB
-GET is only 2.4 ms slower despite 256 times the bytes. The candidates, in
-the order to probe them: two SQLite point reads per GET (bucket, then
-object) through `database/sql`; the Windows `CreateFile` open with
-share-delete per request; the client's HMAC per request; Go's loopback HTTP
-on Windows. A pprof profile of the GET path settles it. Until then, no
-conclusion, only a number to beat.
+**Small reads had a per-request cost, and the profile found it.** 1.1 ms
+median for a 4 KiB GET on loopback was more than the byte path explains. A
+CPU profile of the GET path (`cmd/tunna/get_bench_test.go` with
+`-cpuprofile`) put two thirds of the samples in opening SQLite
+connections: `database/sql` keeps only two idle connections by default, so
+with sixteen concurrent requests the pool was creating and destroying a
+connection, with every DSN pragma and a fresh statement parse, on most
+requests. Setting `SetMaxIdleConns` equal to `SetMaxOpenConns` (8) in
+`sqlite.Open` fixed it. Same run, same machine, after the fix:
+
+| Profile | Workers | Requests/s | p50 | p95 | p99 | max |
+|---------|--------:|-----------:|----:|----:|----:|----:|
+| GET 4 KiB | 16 | 7 695 | 2.1 ms | 3.4 ms | 4.1 ms | 17 ms |
+| GET 4 KiB | 4 | 8 841 | 0.53 ms | 1.0 ms | 1.2 ms | 7.5 ms |
+| GET 4 KiB | 1 | 2 639 | 0.52 ms | 0.78 ms | 1.1 ms | 1.5 ms |
+
+Throughput nearly doubled and the 14 to 18 ms tail, which was the
+connection setup landing on the Windows scheduler tick, is gone. The
+in-process benchmark went from about 150 µs to 77 µs per request.
+
+What remains per small GET, from the profile after the fix: about half the
+CPU is operating-system calls (socket send and receive, the per-request
+`CreateFile` for the blob), three SQLite point reads (key, bucket, object)
+at roughly 13%, and `ServeContent`. The next levers, in order: a short-lived
+cache of API keys in the authentication stage (ADR-0002 called auth
+"cacheable in memory"), then prepared statements held on the `DB`. Neither
+is urgent at 8 000 small reads per second on one core-bound loopback.
 
 **The mixed profile behaves.** Reads keep flowing while writes queue; the
 median stays under a millisecond and the write tail shows up only in max.

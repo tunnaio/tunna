@@ -36,6 +36,8 @@ func Open(path string, logger *slog.Logger) (*DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("sqlite: migrate: %w", err)
 	}
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
 	return &DB{db: db, logger: logger}, nil
 }
 
