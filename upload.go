@@ -24,8 +24,8 @@ type UploadSession struct {
 
 // Part is what the server recorded about one received part.
 type Part struct {
-	Size     int64
-	Checksum string // wire form
+	Size     int64  `json:"size"`
+	Checksum string `json:"checksum"` // wire form
 }
 
 // UploadStore is what the core needs from wherever sessions are kept.

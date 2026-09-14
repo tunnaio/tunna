@@ -11,6 +11,35 @@ import (
 	"github.com/tunnaio/tunna"
 )
 
+// putObjectTx is the select-previous-blob-id-then-upsert that PutObject and
+// CompleteUpload share, run inside the caller's transaction.
+func putObjectTx(ctx context.Context, tx *sql.Tx, o tunna.Object) (prevBlobID string, err error) {
+	prev := ""
+	err = tx.QueryRowContext(ctx, "SELECT blob_id FROM objects WHERE bucket = ? AND key = ?", o.Bucket, o.Key).Scan(&prev)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	if o.Metadata == nil {
+		o.Metadata = map[string]string{}
+	}
+	metadata, err := json.Marshal(o.Metadata)
+	if err != nil {
+		return "", err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO objects (bucket, key, blob_id, size, content_type, checksum, metadata, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (bucket, key) DO UPDATE SET
+		blob_id = excluded.blob_id, size = excluded.size, content_type = excluded.content_type,
+		checksum = excluded.checksum, metadata = excluded.metadata, created_at = excluded.created_at`,
+		o.Bucket, o.Key, o.BlobID, o.Size, o.ContentType, o.Checksum, string(metadata), o.CreatedAt.Unix(),
+	)
+	if err != nil {
+		return "", err
+	}
+	return prev, nil
+}
+
 // GetObject implements tunna.ObjectStore. Metadata is stored as JSON text;
 // a row that fails to decode is reported as an error, since only this
 // adapter writes the column. The returned map is never nil.
@@ -52,30 +81,10 @@ func (d *DB) PutObject(ctx context.Context, o tunna.Object) (previousBlobID stri
 		return "", err
 	}
 	defer tx.Rollback() // no-op after a successful Commit
-	prev := ""
-	err = tx.QueryRowContext(ctx, "SELECT blob_id FROM objects WHERE bucket = ? AND key = ?", o.Bucket, o.Key).Scan(&prev)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", err
-	}
-	if o.Metadata == nil {
-		o.Metadata = map[string]string{}
-	}
-	metadata, err := json.Marshal(o.Metadata)
+	prev, err := putObjectTx(ctx, tx, o)
 	if err != nil {
 		return "", err
 	}
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO objects (bucket, key, blob_id, size, content_type, checksum, metadata, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (bucket, key) DO UPDATE SET
-		blob_id = excluded.blob_id, size = excluded.size, content_type = excluded.content_type,
-		checksum = excluded.checksum, metadata = excluded.metadata, created_at = excluded.created_at`,
-		o.Bucket, o.Key, o.BlobID, o.Size, o.ContentType, o.Checksum, string(metadata), o.CreatedAt.Unix(),
-	)
-	if err != nil {
-		return "", err
-	}
-
 	return prev, tx.Commit()
 }
 

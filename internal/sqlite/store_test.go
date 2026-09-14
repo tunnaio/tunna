@@ -79,3 +79,18 @@ func TestObjectStoreContract(t *testing.T) {
 		return db
 	})
 }
+
+// The uploads table references buckets, as objects does; the contract uses
+// "photos" and "docs", so the factory creates them. Both stores are the
+// same *DB, which is what makes CompleteUpload one transaction.
+func TestUploadStoreContract(t *testing.T) {
+	storetest.UploadStore(t, func(t *testing.T) (tunna.UploadStore, tunna.ObjectStore) {
+		db, _ := openFresh(t)
+		for _, name := range []string{"photos", "docs"} {
+			if err := db.CreateBucket(context.Background(), tunna.Bucket{Name: name}); err != nil {
+				t.Fatalf("seed bucket %s: %v", name, err)
+			}
+		}
+		return db, db
+	})
+}
