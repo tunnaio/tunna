@@ -18,7 +18,9 @@ built. Nothing here is usable yet.
 |------|------|
 | `docs/decisions/` | Architecture decision records. Every non-obvious choice, with the alternative it beat. |
 | `spec/` | The wire contract, error table, signing and encoding vectors, and conformance cases. |
-| `sig/`, `internal/`, `cmd/` | The server, once it exists. See ADR-0005 for the package layout. |
+| `sig/`, `internal/`, `cmd/tunna` | The server. See ADR-0005 for the package layout. |
+| `cmd/tunna-fixtures` | The API in the conformance fixture state, with `POST /reset`, for SDK conformance runners (ADR-0010). |
+| `cmd/tunna-load` | Load generator; see `docs/benchmarks/`. |
 | `sdk/` | Client SDKs, one directory per language. |
 
 ## Reading order

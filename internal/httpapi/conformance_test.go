@@ -14,11 +14,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -31,8 +29,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tunnaio/tunna"
 	"github.com/tunnaio/tunna/internal/disk"
+	"github.com/tunnaio/tunna/internal/fixtures"
 	"github.com/tunnaio/tunna/internal/httpapi"
 	"github.com/tunnaio/tunna/internal/memory"
 	"github.com/tunnaio/tunna/sig"
@@ -101,86 +99,6 @@ type errorTable struct {
 		Code   string `json:"code"`
 		Status int    `json:"status"`
 	} `json:"errors"`
-}
-
-type fixtures struct {
-	Server struct {
-		CORSOrigins []string `json:"cors_origins"`
-	} `json:"server"`
-	Keys map[string]struct {
-		ID       string            `json:"id"`
-		Secret   string            `json:"secret"`
-		Name     string            `json:"name"`
-		Admin    bool              `json:"admin"`
-		Scopes   map[string]string `json:"scopes"`
-		Disabled bool              `json:"disabled"`
-	} `json:"keys"`
-	Buckets map[string]struct {
-		Name    string `json:"name"`
-		Public  bool   `json:"public"`
-		Objects []struct {
-			Key         string    `json:"key"`
-			ContentType string    `json:"content_type"`
-			Text        *string   `json:"text"`
-			Bytes       *genBytes `json:"bytes"`
-		} `json:"objects"`
-	} `json:"buckets"`
-}
-
-// fixtureObjects writes every fixture object's bytes into blobs and returns
-// the metadata rows pointing at them, checksummed the way the server would.
-func fixtureObjects(t *testing.T, fx fixtures, blobs tunna.BlobStore, createdAt time.Time) []tunna.Object {
-	t.Helper()
-	ctx := context.Background()
-	table := crc32.MakeTable(crc32.Castagnoli)
-	var out []tunna.Object
-	for bucketKey, b := range fx.Buckets {
-		bucket := b.Name
-		if bucket == "" {
-			bucket = bucketKey
-		}
-		for _, o := range b.Objects {
-			var data []byte
-			switch {
-			case o.Text != nil:
-				data = []byte(*o.Text)
-			case o.Bytes != nil:
-				data = generate(o.Bytes.Seed, o.Bytes.Length)
-			}
-			id, err := blobs.Create(ctx)
-			if err != nil {
-				t.Fatalf("fixture %s/%s: Create: %v", bucket, o.Key, err)
-			}
-			if _, err := blobs.Write(ctx, id, 0, bytes.NewReader(data)); err != nil {
-				t.Fatalf("fixture %s/%s: Write: %v", bucket, o.Key, err)
-			}
-			ct := o.ContentType
-			if ct == "" {
-				ct = "application/octet-stream"
-			}
-			out = append(out, tunna.Object{
-				Bucket: bucket, Key: o.Key, BlobID: id,
-				Size: int64(len(data)), ContentType: ct,
-				Checksum:  sig.EncodeCRC32C(crc32.Checksum(data, table)),
-				CreatedAt: createdAt,
-			})
-		}
-	}
-	return out
-}
-
-// fixtureBuckets returns the bucket fixtures as the server should hold them
-// before any case runs. The fixture key is the bucket name unless overridden.
-func fixtureBuckets(fx fixtures, createdAt time.Time) []tunna.Bucket {
-	var out []tunna.Bucket
-	for key, b := range fx.Buckets {
-		name := b.Name
-		if name == "" {
-			name = key
-		}
-		out = append(out, tunna.Bucket{Name: name, Public: b.Public, CreatedAt: createdAt})
-	}
-	return out
 }
 
 // auth is the decoded form of a step's "auth" field.
@@ -263,34 +181,27 @@ func TestConformance(t *testing.T) {
 // real disk store. Memory stores for metadata, since the conformance suite
 // tests the wire, not persistence; the SQLite adapter has its own contract
 // tests and cmd/tunna has the restart tests.
-func newServer(t *testing.T, fx fixtures) *httptest.Server {
+func newServer(t *testing.T, fx fixtures.File) *httptest.Server {
 	t.Helper()
 	blobs, err := disk.New(t.TempDir())
 	if err != nil {
 		t.Fatalf("disk.New: %v", err)
 	}
 	now := time.Now()
-	var keys []tunna.APIKey
-	for _, k := range fx.Keys {
-		key := tunna.APIKey{ID: k.ID, Secret: k.Secret, Name: k.Name, Admin: k.Admin, Disabled: k.Disabled, CreatedAt: now}
-		if len(k.Scopes) > 0 {
-			key.Scopes = make(map[string]tunna.Access, len(k.Scopes))
-			for bucket, level := range k.Scopes {
-				key.Scopes[bucket] = tunna.Access(level)
-			}
-		}
-		keys = append(keys, key)
+	objs, err := fx.ObjectRecords(context.Background(), blobs, now)
+	if err != nil {
+		t.Fatalf("provisioning objects: %v", err)
 	}
-	objects := memory.NewObjectStore(fixtureObjects(t, fx, blobs, now))
-	origins, err := tunna.ParseOrigins(fx.Server.CORSOrigins)
+	objects := memory.NewObjectStore(objs)
+	origins, err := fx.Origins()
 	if err != nil {
 		t.Fatalf("fixtures server.cors_origins: %v", err)
 	}
 	return httptest.NewServer(httpapi.New(httpapi.Options{
 		ServerVersion: "test",
 		CORSOrigins:   origins,
-		Keys:          memory.NewKeyStore(keys),
-		Buckets:       memory.NewBucketStore(fixtureBuckets(fx, now)),
+		Keys:          memory.NewKeyStore(fx.APIKeys(now)),
+		Buckets:       memory.NewBucketStore(fx.BucketRecords(now)),
 		Objects:       objects,
 		Uploads:       memory.NewUploadStore(nil, objects),
 		Blobs:         blobs,
@@ -300,21 +211,19 @@ func newServer(t *testing.T, fx fixtures) *httptest.Server {
 // unsupported returns a reason to skip a case the harness cannot serve.
 // Every fixture kind is provisioned into the server before any case runs,
 // so the only reason left is a fixture name the file does not define.
-func unsupported(c conformanceCase, fx fixtures) string {
+func unsupported(c conformanceCase, fx fixtures.File) string {
 	if c.Fixtures == nil {
 		return ""
 	}
 	for _, name := range *c.Fixtures {
-		_, isBucket := fx.Buckets[name]
-		_, isKey := fx.Keys[name]
-		if !isBucket && !isKey {
+		if !fx.Has(name) {
 			return "unknown fixture " + name
 		}
 	}
 	return ""
 }
 
-func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map[string]int, fx fixtures) {
+func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map[string]int, fx fixtures.File) {
 	captured := map[string]string{}
 	for i, s := range c.Steps {
 		name := s.Name
@@ -389,7 +298,7 @@ func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map
 				}
 				reqBody = bytes.NewReader(raw)
 			case b.Bytes != nil:
-				reqBody = bytes.NewReader(generate(b.Bytes.Seed, b.Bytes.Length))
+				reqBody = bytes.NewReader(fixtures.Generate(b.Bytes.Seed, b.Bytes.Length))
 			}
 		}
 
@@ -531,7 +440,7 @@ func check(t *testing.T, name string, e expect, resp *http.Response, body []byte
 		t.Errorf("%s: body empty = %v, want %v", name, len(body) == 0, *e.BodyEmpty)
 	}
 	if e.BodyBytes != nil {
-		if !bytes.Equal(body, generate(e.BodyBytes.Seed, e.BodyBytes.Length)) {
+		if !bytes.Equal(body, fixtures.Generate(e.BodyBytes.Seed, e.BodyBytes.Length)) {
 			t.Errorf("%s: body does not equal generated bytes (seed %d, length %d)", name, e.BodyBytes.Seed, e.BodyBytes.Length)
 		}
 	}
@@ -548,21 +457,21 @@ func mustRead(t *testing.T, path string) string {
 	return string(b)
 }
 
-func loadFixtures(t *testing.T) fixtures {
-	var fx fixtures
-	if err := json.Unmarshal([]byte(mustRead(t, filepath.Join(specDir, "conformance", "fixtures.json"))), &fx); err != nil {
+func loadFixtures(t *testing.T) fixtures.File {
+	fx, err := fixtures.Load(filepath.Join(specDir, "conformance", "fixtures.json"))
+	if err != nil {
 		t.Fatalf("fixtures.json: %v", err)
 	}
 	return fx
 }
 
-func fixtureKey(t *testing.T, fx fixtures, name string) sig.Key {
+func fixtureKey(t *testing.T, fx fixtures.File, name string) sig.Key {
 	t.Helper()
-	k, ok := fx.Keys[name]
+	k, ok := fx.SigKey(name)
 	if !ok {
 		t.Fatalf("no key fixture %q", name)
 	}
-	return sig.Key{ID: k.ID, Secret: k.Secret}
+	return k
 }
 
 // corruptLastHex flips the final hex digit of a signature so it is
@@ -609,19 +518,6 @@ func substitute(s string, vars map[string]string) string {
 		s = strings.ReplaceAll(s, "{{"+k+"}}", v)
 	}
 	return s
-}
-
-// generate is the sha256-counter byte generator from fixtures.json.
-func generate(seed, length int64) []byte {
-	out := make([]byte, 0, length)
-	var block [16]byte
-	binary.BigEndian.PutUint64(block[:8], uint64(seed))
-	for counter := int64(0); int64(len(out)) < length; counter++ {
-		binary.BigEndian.PutUint64(block[8:], uint64(counter))
-		sum := sha256.Sum256(block[:])
-		out = append(out, sum[:]...)
-	}
-	return out[:length]
 }
 
 // subset reports the first place where want is not a subset of got.
