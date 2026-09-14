@@ -1,0 +1,76 @@
+{
+  "name": "tunna",
+  "version": "0.1.0",
+  "description": "Client for the tunna object store: signer, presigned URLs, concurrent uploads. Browser and Node, no dependencies.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tunnaio/tunna.git",
+    "directory": "sdk/typescript"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./sign": {
+      "import": {
+        "types": "./dist/sign.d.mts",
+        "default": "./dist/sign.mjs"
+      },
+      "require": {
+        "types": "./dist/sign.d.cts",
+        "default": "./dist/sign.cjs"
+      }
+    },
+    "./encode": {
+      "import": {
+        "types": "./dist/encode.d.mts",
+        "default": "./dist/encode.mjs"
+      },
+      "require": {
+        "types": "./dist/encode.d.cts",
+        "default": "./dist/encode.cjs"
+      }
+    },
+    "./crc32c": {
+      "import": {
+        "types": "./dist/crc32c.d.mts",
+        "default": "./dist/crc32c.mjs"
+      },
+      "require": {
+        "types": "./dist/crc32c.d.cts",
+        "default": "./dist/crc32c.cjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check": "tsc --noEmit",
+    "test": "bun test",
+    "gen": "bun run scripts/gen-errors.ts",
+    "smoke": "bun run build && node test/node-smoke.mjs && node test/node-smoke.cjs"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "tsdown": "0.23.0",
+    "typescript": "7.0.2"
+  }
+}

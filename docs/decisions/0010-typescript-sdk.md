@@ -284,8 +284,9 @@ To revisit:
        still 108 of 108.
 3. [x] `cmd/tunna-fixtures` with `/reset`, 2026-09-15; a Go test builds and
        spawns it, reads the URL, mutates, resets, and sees the fixtures back.
-4. [ ] `sdk/typescript` scaffold: package.json, tsconfig, generated
-       errors, the four vector tests failing against empty modules.
+4. [x] `sdk/typescript` scaffold, 2026-09-15: package.json, tsconfig, tsdown,
+       generated errors, stubs with the API fixed, 89 vector tests of which
+       81 fail against the stubs, Node smoke scripts, CI job.
 5. [ ] `encode`, `sign`, `crc32c` until the vector tests pass.
 6. [ ] The client, then the conformance test, then `upload`.
 7. [ ] README for the package; the repo README's SDK table gains a row.
