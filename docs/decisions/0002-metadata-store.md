@@ -367,6 +367,12 @@ with group commit should land near seventy thousand durable writes per
 second on the same hardware. That is the target for phase C, and the
 same benchmark is the measurement.
 
+End to end over HTTP (`docs/benchmarks/http-load.md`, 2026-09-14): 480
+small-object PUTs per second at 16 workers and fewer at 64, with the
+latency tail growing as the queue does. Two fsyncs per PUT, one for the
+blob and one for the commit, the commits serialized. Phase C batches the
+commits; the blob fsync remains the floor.
+
 ## Action items
 
 1. [x] Maintainer accepted this record 2026-09-09.
