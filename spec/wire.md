@@ -236,53 +236,101 @@ file and never a dangling row.
 ## 6. Uploads [ADR-0001]
 
 Numbered parts of a fixed per-session size, written at offset into one file.
-No assembly step.
+No assembly step. Every route below requires credentials, header form or
+presigned; the presigned form is how a browser uploads parts directly.
 
 ### 6.1 Initiate
 
-`POST /-/uploads` with a JSON body: bucket, key, `part_size` (bytes),
-optional `content_type`, optional `size` (total, if known), optional user
-metadata. Returns the session id, the part size, and the expiry.
+`POST /-/uploads` with a JSON body:
 
-Part size limits are server configuration, with defaults of
-minimum 5 MiB and maximum 100 MiB. The maximum exists because proxies cap
-bodies.
+```json
+{ "bucket": "photos", "key": "2026/big.bin", "part_size": 5242880,
+  "content_type": "application/octet-stream", "metadata": { "title": "x" } }
+```
+
+`bucket`, `key` and `part_size` are required. `content_type` defaults to
+`application/octet-stream`. `metadata` is optional and has the same rules
+as the `X-Tunna-Meta-` headers on a single-request PUT. Faults in ladder
+order: a missing or mistyped field is `invalid_parameter` with
+`details.name`; a bad key is `invalid_key`; a part size outside the
+server's limits is `invalid_part_size` with `details.min` and `details.max`
+(defaults 5 MiB and 100 MiB; the maximum exists because proxies cap
+bodies); an unknown bucket is `bucket_not_found`.
+
+Response `201`:
+
+```json
+{ "id": "up_...", "bucket": "photos", "key": "2026/big.bin", "part_size": 5242880,
+  "content_type": "application/octet-stream", "created_at": 1788912000, "expires_at": 1788998400 }
+```
+
+The id is opaque. A session that is neither completed nor aborted expires
+at `expires_at` (server configuration, default 24 hours after initiate).
 
 ### 6.2 Part
 
-`PUT /-/uploads/{id}/parts/{n}`, `n` from 1. The body is exactly `part_size`
-bytes unless `n` is the final part, in which case it is between 1 and
-`part_size` bytes. The server does not know which part is final until
-complete, so the rule enforced on arrival is: length is `part_size`, or less
-than `part_size`. A part shorter than `part_size` that is later found not to
-be the last is rejected at complete with `part_size_mismatch`.
+`PUT /-/uploads/{id}/parts/{n}`, `n` from 1 to the server's maximum
+(default 10 000); outside that is `invalid_part_number` with `details.max`.
+An unknown id is `upload_not_found`. `Content-Length` is required; absent is
+`malformed_request` and zero is `invalid_parameter` naming `Content-Length`,
+since a part is never empty. A body longer than `part_size` is
+`body_too_large` before any byte is read. A body
+shorter than `part_size` is accepted on arrival, since only complete knows
+which part is last. `X-Tunna-Checksum` is optional and, when present, the
+body is rejected with `checksum_mismatch` on a mismatch (section 8).
 
-The server writes the body at offset `(n-1) * part_size`, syncs it, records
-`n` as received, and returns the part's checksum. Re-sending a part replaces
-it. Parts may arrive in any order and concurrently.
+The server writes the body at offset `(n-1) * part_size`, syncs it, and
+records the part's length and checksum. Re-sending a part replaces it. Parts
+may arrive in any order and concurrently. Clients should send
+`Expect: 100-continue` so a rejection before stage 5 costs no bandwidth.
 
-Clients should send `Expect: 100-continue` so that a rejection before stage
-5 costs no upload bandwidth.
+Response `200`, with `X-Tunna-Checksum` carrying the same value:
+
+```json
+{ "part": 3, "size": 1024, "checksum": "crc32c=..." }
+```
 
 ### 6.3 Query
 
-`GET /-/uploads/{id}` returns the session: bucket, key, part size, expiry, and
-the sorted list of received part numbers. Resume is: fetch this, send what is
-missing.
+`GET /-/uploads/{id}` returns the session, with the received part numbers
+sorted ascending. Resume is: fetch this, send what is missing.
+
+```json
+{ "id": "up_...", "bucket": "photos", "key": "2026/big.bin", "part_size": 5242880,
+  "content_type": "application/octet-stream", "created_at": 1788912000,
+  "expires_at": 1788998400, "parts": [1, 3] }
+```
 
 ### 6.4 Complete
 
-`POST /-/uploads/{id}/complete` with a JSON body: `parts` (the total count),
-and, if the checksum scheme requires it, the per-part checksums. The server
-checks that parts 1 through `parts` are all received, that every part before
-the last has length `part_size`, records the object, and drops the session,
-in one transaction. Returns the object's metadata as HEAD would.
+`POST /-/uploads/{id}/complete` with a JSON body:
+
+```json
+{ "parts": 3, "checksums": ["crc32c=...", "crc32c=...", "crc32c=..."] }
+```
+
+`parts` is the total count, at least 1; `checksums` is optional and, when
+present, must have exactly `parts` entries. The server checks, in order:
+every part 1..`parts` was received, else `upload_incomplete` with
+`details.missing` listing the absent numbers; every part before the last has
+length `part_size`, else `part_size_mismatch` with `details.part`; every
+supplied checksum equals the recorded one, else `checksum_mismatch` with
+`details.part`. Then, in one transaction, it records the object with the
+combined checksum (ADR-0006) and drops the session. An existing object at
+the key is replaced, as with PUT.
+
+Response `201` with the object record (section 5.3) and the `ETag` and
+`X-Tunna-Checksum` headers, exactly as a single-request PUT answers.
+After complete the session id is gone: query and part answer
+`upload_not_found`.
 
 ### 6.5 Abort and expiry
 
-`DELETE /-/uploads/{id}` releases the file and the session. Sessions that
-are neither completed nor aborted expire after a server-configured time,
-default 24 hours, and are collected.
+`DELETE /-/uploads/{id}` releases the file and the session, `204`. An
+unknown id is `upload_not_found`. Expired sessions answer
+`session_not_active` on part, query and complete until a sweep removes them,
+after which they are `upload_not_found`. A bucket with an active session
+cannot be deleted: `bucket_not_empty`.
 
 ## 7. Listing
 

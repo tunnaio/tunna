@@ -268,11 +268,13 @@ func newServer(t *testing.T, fx fixtures) *httptest.Server {
 		keys = append(keys, tunna.APIKey{ID: k.ID, Secret: k.Secret, Disabled: k.Disabled})
 	}
 	now := time.Now()
+	objects := memory.NewObjectStore(fixtureObjects(t, fx, blobs, now))
 	return httptest.NewServer(httpapi.New(httpapi.Options{
 		ServerVersion: "test",
 		Keys:          memory.NewKeyStore(keys),
 		Buckets:       memory.NewBucketStore(fixtureBuckets(fx, now)),
-		Objects:       memory.NewObjectStore(fixtureObjects(t, fx, blobs, now)),
+		Objects:       objects,
+		Uploads:       memory.NewUploadStore(nil, objects),
 		Blobs:         blobs,
 	}))
 }

@@ -18,9 +18,14 @@ type Options struct {
 	Buckets       tunna.BucketStore
 	Objects       tunna.ObjectStore
 	Blobs         tunna.BlobStore
+	Uploads       tunna.UploadStore
 	Now           func() time.Time // clock; nil means time.Now
 	Skew          time.Duration    // accepted X-Tunna-Date drift; 0 means 15 minutes
 	MaxPresign    time.Duration    // longest presigned lifetime; 0 means 7 days
+	PartSizeMin   int64
+	PartSizeMax   int64
+	MaxParts      int64
+	UploadTTL     time.Duration
 }
 
 // handler carries the dependencies the route methods need.
@@ -31,9 +36,14 @@ type handler struct {
 	buckets       tunna.BucketStore
 	objects       tunna.ObjectStore
 	blobs         tunna.BlobStore
+	uploads       tunna.UploadStore
 	now           func() time.Time
 	skew          time.Duration
 	maxPresign    time.Duration
+	partSizeMin   int64
+	partSizeMax   int64
+	maxParts      int64
+	uploadTTL     time.Duration
 }
 
 // New builds the HTTP handler for the server: the routes, wrapped in the
@@ -48,6 +58,18 @@ func New(o Options) http.Handler {
 	if o.MaxPresign == 0 {
 		o.MaxPresign = 7 * 24 * time.Hour
 	}
+	if o.PartSizeMin == 0 {
+		o.PartSizeMin = 5 << 20
+	}
+	if o.PartSizeMax == 0 {
+		o.PartSizeMax = 100 << 20
+	}
+	if o.MaxParts == 0 {
+		o.MaxParts = 10_000
+	}
+	if o.UploadTTL == 0 {
+		o.UploadTTL = 24 * time.Hour
+	}
 
 	mux := http.NewServeMux()
 	h := &handler{
@@ -57,9 +79,14 @@ func New(o Options) http.Handler {
 		buckets:       o.Buckets,
 		objects:       o.Objects,
 		blobs:         o.Blobs,
+		uploads:       o.Uploads,
 		now:           o.Now,
 		skew:          o.Skew,
 		maxPresign:    o.MaxPresign,
+		partSizeMin:   o.PartSizeMin,
+		partSizeMax:   o.PartSizeMax,
+		maxParts:      o.MaxParts,
+		uploadTTL:     o.UploadTTL,
 	}
 
 	mux.HandleFunc("GET /-/health", h.health)
@@ -70,6 +97,13 @@ func New(o Options) http.Handler {
 	mux.HandleFunc("GET /-/buckets/{bucket}", requireAuth(h.getBucket))
 	mux.HandleFunc("PUT /-/buckets/{bucket}", requireAuth(h.createBucket))
 	mux.HandleFunc("DELETE /-/buckets/{bucket}", requireAuth(h.deleteBucket))
+
+	// uploads routes
+	mux.HandleFunc("POST /-/uploads", requireAuth(h.createUpload))
+	mux.HandleFunc("PUT /-/uploads/{id}/parts/{n}", requireAuth(h.putUploadPart))
+	mux.HandleFunc("GET /-/uploads/{id}", requireAuth(h.getUpload))
+	mux.HandleFunc("DELETE /-/uploads/{id}", requireAuth(h.deleteUpload))
+	mux.HandleFunc("POST /-/uploads/{id}/complete", requireAuth(h.completeUpload))
 
 	// object routes
 	mux.HandleFunc("PUT /{bucket}/{key...}", reserved(requireAuth(h.putObject)))

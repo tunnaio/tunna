@@ -113,16 +113,48 @@ Notes:
   incremented, or no upper bound for an empty prefix. `after` adds
   `AND key > ?`. Ordered by key, which is the index order, bytewise.
 
+## Version 3: upload sessions
+
+```sql
+CREATE TABLE uploads (
+    id           TEXT    NOT NULL PRIMARY KEY,
+    bucket       TEXT    NOT NULL REFERENCES buckets(name),
+    key          TEXT    NOT NULL,
+    blob_id      TEXT    NOT NULL,
+    part_size    INTEGER NOT NULL,
+    content_type TEXT    NOT NULL,
+    metadata     TEXT    NOT NULL DEFAULT '{}',
+    parts        TEXT    NOT NULL DEFAULT '{}',
+    created_at   INTEGER NOT NULL,
+    expires_at   INTEGER NOT NULL
+) WITHOUT ROWID, STRICT;
+
+CREATE INDEX uploads_by_bucket ON uploads (bucket);
+```
+
+Notes:
+
+- `parts` is a JSON object mapping part number to `{"size": n, "checksum":
+  "crc32c=..."}` for every part received. ADR-0001 sketched a bitmap; ADR-0006
+  then required the per-part CRC so complete can combine them, and the
+  length so a short non-final part is caught, so a bitmap is not enough. At
+  ten thousand parts the object is a few hundred kilobytes and is rewritten
+  once per part, which is negligible next to the part itself. It is also
+  readable in the CLI, which a bitmap is not.
+- `blob_id` is the file created at initiate (ADR-0007); parts write into it
+  at offset. Complete moves the id into an `objects` row; abort removes the
+  file.
+- Complete is one transaction: read the session, insert or replace the
+  object row (returning the previous blob id as `PutObject` does), delete
+  the session. It runs under `_txlock=immediate` like every read-then-write.
+- The index on `bucket` serves `bucket_not_empty`, which must also see
+  active sessions, and the expiry sweep's per-bucket accounting.
+- Expired sessions stay in the table until a sweep removes them and their
+  files; until then they answer `session_not_active`. The sweep is not in
+  this version.
+
 ## Later versions, sketched
 
-Not written as migrations yet; recorded so earlier versions make no choice
-that fights them.
-
-- **v3, upload sessions.** `uploads (id TEXT PRIMARY KEY, bucket, key,
-  part_size INTEGER, parts_received BLOB, expires_at INTEGER, ...)`. The
-  received-parts set (ADR-0001) is a bitmap in a `BLOB`, one bit per part,
-  ten thousand parts in about 1.3 KB. Complete is one transaction: check the
-  bitmap, insert the object, delete the session.
 - `bucket_not_empty` on delete becomes a query over `objects` and `uploads`
   by bucket, both of which want an index on `bucket` that the primary keys
   above already provide.

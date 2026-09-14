@@ -135,6 +135,17 @@ func (h *handler) deleteBucket(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	uploadCount, err := h.uploads.CountUploads(r.Context(), name)
+	if err != nil {
+		writeError(w, codeInternal, "bucket delete failed", nil)
+		return
+	}
+	if uploadCount > 0 {
+		writeError(w, codeBucketNotEmpty, "bucket still holds uploads", map[string]any{
+			"bucket": name,
+		})
+		return
+	}
 
 	err = h.buckets.DeleteBucket(r.Context(), name)
 	switch {

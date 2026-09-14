@@ -1,0 +1,1603 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "upload-lifecycle-out-of-order",
+      "description": "Initiate, send three parts in the order 3, 1, 2 (the last one short), query, complete, read the object back, and confirm the session is gone. The expected checksum is the CRC32C of the concatenated bytes, and it equals the combine vector in crc32c.json.",
+      "decision": "ADR-0001",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "name": "initiate",
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "big.bin",
+                "part_size": 5242880,
+                "content_type": "application/octet-stream",
+                "metadata": {
+                  "title": "big"
+                }
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "bucket": "empty",
+              "key": "big.bin",
+              "part_size": 5242880,
+              "content_type": "application/octet-stream"
+            },
+            "json_present": [
+              "/id",
+              "/created_at",
+              "/expires_at"
+            ]
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "name": "part-3-short",
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "3"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 10,
+                "length": 1024
+              }
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "part": 3,
+              "size": 1024,
+              "checksum": "crc32c=16Iysw=="
+            },
+            "headers": {
+              "X-Tunna-Checksum": "crc32c=16Iysw=="
+            }
+          }
+        },
+        {
+          "name": "part-1",
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 8,
+                "length": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "part": 1,
+              "size": 5242880,
+              "checksum": "crc32c=UXMjHQ=="
+            }
+          }
+        },
+        {
+          "name": "part-2",
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "2"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 9,
+                "length": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "part": 2,
+              "size": 5242880,
+              "checksum": "crc32c=ZagDLA=="
+            }
+          }
+        },
+        {
+          "name": "query",
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "part_size": 5242880,
+              "parts": [
+                1,
+                2,
+                3
+              ]
+            }
+          }
+        },
+        {
+          "name": "complete",
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "complete"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "parts": 3
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "headers": {
+              "ETag": "\"crc32c=JKAp5Q==\"",
+              "X-Tunna-Checksum": "crc32c=JKAp5Q=="
+            },
+            "json": {
+              "bucket": "empty",
+              "key": "big.bin",
+              "size": 10486784,
+              "checksum": "crc32c=JKAp5Q==",
+              "content_type": "application/octet-stream",
+              "metadata": {
+                "title": "big"
+              }
+            }
+          }
+        },
+        {
+          "name": "get-object",
+          "request": {
+            "method": "GET",
+            "path": [
+              "empty",
+              "big.bin"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "Content-Length": "10486784",
+              "ETag": "\"crc32c=JKAp5Q==\""
+            },
+            "body_sha256": "7211b6f571a875312d10a1ade3fd4999d98eabe0c2543b456e3aea74a9fe2bc2"
+          }
+        },
+        {
+          "name": "session-gone",
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "error": "upload_not_found"
+          }
+        },
+        {
+          "name": "cleanup",
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "empty",
+              "big.bin"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-complete-with-checksums",
+      "description": "Complete may carry the per-part checksums; matching ones are accepted, and a wrong one is rejected naming the part, leaving the session active.",
+      "decision": "ADR-0006",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "sums.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 8,
+                "length": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "2"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 10,
+                "length": 1024
+              }
+            }
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "wrong-checksum-for-part-2",
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "complete"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "parts": 2,
+                "checksums": [
+                  "crc32c=UXMjHQ==",
+                  "crc32c=AAAAAA=="
+                ]
+              }
+            }
+          },
+          "expect": {
+            "error": "checksum_mismatch",
+            "json": {
+              "error": {
+                "details": {
+                  "part": 2
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "still-active",
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "parts": [
+                1,
+                2
+              ]
+            }
+          }
+        },
+        {
+          "name": "correct-checksums",
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "complete"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "parts": 2,
+                "checksums": [
+                  "crc32c=UXMjHQ==",
+                  "crc32c=16Iysw=="
+                ]
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "empty",
+              "sums.bin"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-part-replaces-earlier-part",
+      "description": "Re-sending a part replaces it. Part 1 is sent with one seed then another; the completed object is the second.",
+      "decision": "wire.md 6.2",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "replace.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 8,
+                "length": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 9,
+                "length": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "checksum": "crc32c=ZagDLA=="
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "parts": [
+                1
+              ]
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "complete"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "parts": 1
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "size": 5242880,
+              "checksum": "crc32c=ZagDLA=="
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "empty",
+              "replace.bin"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body_sha256": "dc06100e7e6c2104c8d6619a82b61cdc11b80b1631005564bc11390e00120783"
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "empty",
+              "replace.bin"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-part-size-mismatch-at-complete",
+      "description": "A short part is accepted on arrival; complete rejects it once it turns out not to be last.",
+      "decision": "wire.md 6.4",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "short.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 11,
+                "length": 1024
+              }
+            }
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "2"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 9,
+                "length": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "complete"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "parts": 2
+              }
+            }
+          },
+          "expect": {
+            "error": "part_size_mismatch",
+            "json": {
+              "error": {
+                "details": {
+                  "part": 1
+                }
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-part-too-large",
+      "description": "A body longer than part_size is refused before it is read.",
+      "decision": "wire.md 6.2",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "fat.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 8,
+                "length": 5242881
+              }
+            },
+            "expect_continue": true
+          },
+          "expect": {
+            "error": "body_too_large"
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "parts": []
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-part-checksum-header-mismatch",
+      "decision": "ADR-0006",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "hdr.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "key": "alice",
+              "signed_headers": [
+                "x-tunna-checksum"
+              ]
+            },
+            "body": {
+              "bytes": {
+                "seed": 8,
+                "length": 5242880
+              }
+            },
+            "headers": {
+              "X-Tunna-Checksum": "crc32c=AAAAAA=="
+            }
+          },
+          "expect": {
+            "error": "checksum_mismatch"
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "parts": []
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-abort",
+      "description": "Abort releases the session; every later route on the id is not found.",
+      "decision": "wire.md 6.5",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "gone.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 8,
+                "length": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "body_empty": true
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "error": "upload_not_found"
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "2"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "bytes": {
+                "seed": 9,
+                "length": 5242880
+              }
+            },
+            "expect_continue": true
+          },
+          "expect": {
+            "error": "upload_not_found"
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "error": "upload_not_found"
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "empty",
+              "gone.bin"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "error": "object_not_found"
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-blocks-bucket-delete",
+      "description": "A bucket with an active session is not empty.",
+      "decision": "wire.md 6.5",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "pending.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "-",
+              "buckets",
+              "empty"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "error": "bucket_not_empty"
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "-",
+              "buckets",
+              "empty"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-initiate-faults",
+      "description": "Stage 4 before stage 6: a bad part size and a bad key are rejected before the bucket is consulted; then an unknown bucket.",
+      "decision": "ADR-0004",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "no-such-bucket",
+                "key": "a.bin",
+                "part_size": 1024
+              }
+            }
+          },
+          "expect": {
+            "error": "invalid_part_size",
+            "json": {
+              "error": {
+                "details": {
+                  "min": 5242880
+                }
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "no-such-bucket",
+                "key": "",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "error": "invalid_key"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "a.bin"
+              }
+            }
+          },
+          "expect": {
+            "error": "invalid_parameter",
+            "json": {
+              "error": {
+                "details": {
+                  "name": "part_size"
+                }
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "no-such-bucket",
+                "key": "a.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "error": "bucket_not_found"
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-initiate-requires-credentials",
+      "decision": "ADR-0004",
+      "fixtures": [
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": "none",
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "a.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "error": "unauthenticated"
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-unknown-session",
+      "decision": "wire.md 6.2",
+      "fixtures": [
+        "alice"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "uploads",
+              "up_nope"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "error": "upload_not_found"
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "up_nope",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "text": "x"
+            },
+            "expect_continue": true
+          },
+          "expect": {
+            "error": "upload_not_found"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads",
+              "up_nope",
+              "complete"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "parts": 1
+              }
+            }
+          },
+          "expect": {
+            "error": "upload_not_found"
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-complete-parts-must-be-positive",
+      "decision": "wire.md 6.4",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "zero.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "complete"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "parts": 0
+              }
+            }
+          },
+          "expect": {
+            "error": "invalid_parameter",
+            "json": {
+              "error": {
+                "details": {
+                  "name": "parts"
+                }
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "complete"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "parts": 1,
+                "checksums": [
+                  "crc32c=UXMjHQ==",
+                  "crc32c=ZagDLA=="
+                ]
+              }
+            }
+          },
+          "expect": {
+            "error": "invalid_parameter",
+            "json": {
+              "error": {
+                "details": {
+                  "name": "checksums"
+                }
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        }
+      ]
+    },
+    {
+      "name": "upload-part-with-presigned-url",
+      "description": "A browser uploads a part through a presigned URL and completes with credentials of its own.",
+      "decision": "ADR-0003",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "bucket": "empty",
+                "key": "browser.bin",
+                "part_size": 5242880
+              }
+            }
+          },
+          "expect": {
+            "status": 201
+          },
+          "capture": {
+            "id": "/id"
+          }
+        },
+        {
+          "request": {
+            "method": "PUT",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "parts",
+              "1"
+            ],
+            "auth": {
+              "presign": {
+                "key": "alice",
+                "expires_in_seconds": 300
+              }
+            },
+            "body": {
+              "bytes": {
+                "seed": 10,
+                "length": 1024
+              }
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "part": 1,
+              "size": 1024
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": [
+              "-",
+              "uploads",
+              "{{id}}",
+              "complete"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "parts": 1
+              }
+            }
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "size": 1024,
+              "checksum": "crc32c=16Iysw=="
+            }
+          }
+        },
+        {
+          "request": {
+            "method": "DELETE",
+            "path": [
+              "empty",
+              "browser.bin"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        }
+      ]
+    }
+  ]
+}
