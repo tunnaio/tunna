@@ -1,0 +1,130 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "keys-create-get-list-delete",
+      "description": "Create a scoped key: the secret appears once, at create. Get and list omit it. Delete answers 204 and get afterwards is not found.",
+      "decision": "wire.md 4.2",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "name": "create",
+          "request": { "method": "POST", "path": ["-", "keys"], "auth": { "key": "alice" }, "body": { "json": { "name": "web-prod", "scopes": { "photos": "write", "public-site": "read" } } } },
+          "expect": { "status": 201, "json": { "name": "web-prod", "admin": false, "disabled": false, "scopes": { "photos": "write", "public-site": "read" } }, "json_present": ["/id", "/secret", "/created_at"] },
+          "capture": { "id": "/id" }
+        },
+        {
+          "name": "get-omits-secret",
+          "request": { "method": "GET", "path": ["-", "keys", "{{id}}"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json": { "id": "{{id}}", "name": "web-prod" }, "json_absent": ["/secret"] }
+        },
+        {
+          "name": "list-omits-secret",
+          "request": { "method": "GET", "path": ["-", "keys"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json_present": ["/keys"], "json_absent": ["/keys/0/secret"] }
+        },
+        {
+          "name": "delete",
+          "request": { "method": "DELETE", "path": ["-", "keys", "{{id}}"], "auth": { "key": "alice" } },
+          "expect": { "status": 204, "body_empty": true }
+        },
+        {
+          "name": "get-after-delete",
+          "request": { "method": "GET", "path": ["-", "keys", "{{id}}"], "auth": { "key": "alice" } },
+          "expect": { "error": "key_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "keys-create-admin-omits-scopes",
+      "decision": "wire.md 4.2",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": { "method": "POST", "path": ["-", "keys"], "auth": { "key": "alice" }, "body": { "json": { "name": "ops", "admin": true } } },
+          "expect": { "status": 201, "json": { "admin": true }, "json_absent": ["/scopes"] },
+          "capture": { "id": "/id" }
+        },
+        { "request": { "method": "DELETE", "path": ["-", "keys", "{{id}}"], "auth": { "key": "alice" } }, "expect": { "status": 204 } }
+      ]
+    },
+    {
+      "name": "keys-create-invalid",
+      "description": "Stage 4: missing name, admin with scopes, a bad level, a scope key that is not a bucket name.",
+      "decision": "wire.md 4.2",
+      "fixtures": ["alice"],
+      "steps": [
+        { "request": { "method": "POST", "path": ["-", "keys"], "auth": { "key": "alice" }, "body": { "json": { "scopes": { "photos": "read" } } } }, "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "name" } } } } },
+        { "request": { "method": "POST", "path": ["-", "keys"], "auth": { "key": "alice" }, "body": { "json": { "name": "x", "admin": true, "scopes": { "photos": "read" } } } }, "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "scopes" } } } } },
+        { "request": { "method": "POST", "path": ["-", "keys"], "auth": { "key": "alice" }, "body": { "json": { "name": "x", "scopes": { "photos": "owner" } } } }, "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "scopes" } } } } },
+        { "request": { "method": "POST", "path": ["-", "keys"], "auth": { "key": "alice" }, "body": { "json": { "name": "x", "scopes": { "Bad_Name": "read" } } } }, "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "scopes" } } } } },
+        { "request": { "method": "POST", "path": ["-", "keys"], "auth": { "key": "alice" }, "body": { "json": { "name": "x" } } }, "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "scopes" } } } } }
+      ]
+    },
+    {
+      "name": "keys-disable-takes-effect-immediately",
+      "description": "Disabling bob makes bob's next request unknown_key; enabling restores it.",
+      "decision": "ADR-0003",
+      "fixtures": ["alice", "bob"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["-", "health"], "auth": { "key": "bob" } }, "expect": { "status": 200 } },
+        { "request": { "method": "PATCH", "path": ["-", "keys", "tk_bob"], "auth": { "key": "alice" }, "body": { "json": { "disabled": true } } }, "expect": { "status": 200, "json": { "id": "tk_bob", "disabled": true } } },
+        { "request": { "method": "GET", "path": ["-", "health"], "auth": { "key": "bob" } }, "expect": { "error": "unknown_key" } },
+        { "request": { "method": "PATCH", "path": ["-", "keys", "tk_bob"], "auth": { "key": "alice" }, "body": { "json": { "disabled": false } } }, "expect": { "status": 200, "json": { "disabled": false } } },
+        { "request": { "method": "GET", "path": ["-", "health"], "auth": { "key": "bob" } }, "expect": { "status": 200 } }
+      ]
+    },
+    {
+      "name": "keys-rotate-invalidates-old-secret",
+      "description": "After rotate, a request signed with the old secret is bad_signature: the key exists, the secret changed.",
+      "decision": "ADR-0008",
+      "fixtures": ["alice", "bob"],
+      "steps": [
+        { "request": { "method": "POST", "path": ["-", "keys", "tk_bob", "rotate"], "auth": { "key": "alice" } }, "expect": { "status": 200, "json": { "id": "tk_bob" }, "json_present": ["/secret"] } },
+        { "request": { "method": "GET", "path": ["-", "health"], "auth": { "key": "bob" } }, "expect": { "error": "bad_signature" } }
+      ]
+    },
+    {
+      "name": "keys-patch-scopes-takes-effect-immediately",
+      "description": "reader gains write on photos by patch, then can PUT; losing it again makes the next PUT forbidden.",
+      "decision": "ADR-0008",
+      "fixtures": ["alice", "reader", "photos"],
+      "steps": [
+        { "request": { "method": "PUT", "path": ["photos", "r.txt"], "auth": { "key": "reader" }, "body": { "text": "x" }, "expect_continue": true }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "PATCH", "path": ["-", "keys", "tk_reader"], "auth": { "key": "alice" }, "body": { "json": { "scopes": { "photos": "write" } } } }, "expect": { "status": 200, "json": { "scopes": { "photos": "write" } } } },
+        { "request": { "method": "PUT", "path": ["photos", "r.txt"], "auth": { "key": "reader" }, "body": { "text": "x" } }, "expect": { "status": 201 } },
+        { "request": { "method": "PATCH", "path": ["-", "keys", "tk_reader"], "auth": { "key": "alice" }, "body": { "json": { "scopes": { "photos": "read" } } } }, "expect": { "status": 200 } },
+        { "request": { "method": "DELETE", "path": ["photos", "r.txt"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "DELETE", "path": ["photos", "r.txt"], "auth": { "key": "alice" } }, "expect": { "status": 204 } }
+      ]
+    },
+    {
+      "name": "keys-delete-invalidates-immediately",
+      "decision": "ADR-0008",
+      "fixtures": ["alice", "bob"],
+      "steps": [
+        { "request": { "method": "DELETE", "path": ["-", "keys", "tk_bob"], "auth": { "key": "alice" } }, "expect": { "status": 204 } },
+        { "request": { "method": "GET", "path": ["-", "health"], "auth": { "key": "bob" } }, "expect": { "error": "unknown_key" } },
+        { "request": { "method": "DELETE", "path": ["-", "keys", "tk_bob"], "auth": { "key": "alice" } }, "expect": { "error": "key_not_found" } }
+      ]
+    },
+    {
+      "name": "keys-routes-require-credentials",
+      "decision": "ADR-0004",
+      "fixtures": [],
+      "steps": [
+        { "request": { "method": "GET", "path": ["-", "keys"], "auth": "none" }, "expect": { "error": "unauthenticated" } }
+      ]
+    },
+    {
+      "name": "keys-unknown-id",
+      "decision": "wire.md 4.2",
+      "fixtures": ["alice"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["-", "keys", "tk_nope"], "auth": { "key": "alice" } }, "expect": { "error": "key_not_found" } },
+        { "request": { "method": "PATCH", "path": ["-", "keys", "tk_nope"], "auth": { "key": "alice" }, "body": { "json": { "disabled": true } } }, "expect": { "error": "key_not_found" } },
+        { "request": { "method": "POST", "path": ["-", "keys", "tk_nope", "rotate"], "auth": { "key": "alice" } }, "expect": { "error": "key_not_found" } }
+      ]
+    }
+  ]
+}

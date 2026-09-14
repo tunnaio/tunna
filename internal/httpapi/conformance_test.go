@@ -105,9 +105,12 @@ type errorTable struct {
 
 type fixtures struct {
 	Keys map[string]struct {
-		ID       string `json:"id"`
-		Secret   string `json:"secret"`
-		Disabled bool   `json:"disabled"`
+		ID       string            `json:"id"`
+		Secret   string            `json:"secret"`
+		Name     string            `json:"name"`
+		Admin    bool              `json:"admin"`
+		Scopes   map[string]string `json:"scopes"`
+		Disabled bool              `json:"disabled"`
 	} `json:"keys"`
 	Buckets map[string]struct {
 		Name    string `json:"name"`
@@ -263,11 +266,18 @@ func newServer(t *testing.T, fx fixtures) *httptest.Server {
 	if err != nil {
 		t.Fatalf("disk.New: %v", err)
 	}
+	now := time.Now()
 	var keys []tunna.APIKey
 	for _, k := range fx.Keys {
-		keys = append(keys, tunna.APIKey{ID: k.ID, Secret: k.Secret, Disabled: k.Disabled})
+		key := tunna.APIKey{ID: k.ID, Secret: k.Secret, Name: k.Name, Admin: k.Admin, Disabled: k.Disabled, CreatedAt: now}
+		if len(k.Scopes) > 0 {
+			key.Scopes = make(map[string]tunna.Access, len(k.Scopes))
+			for bucket, level := range k.Scopes {
+				key.Scopes[bucket] = tunna.Access(level)
+			}
+		}
+		keys = append(keys, key)
 	}
-	now := time.Now()
 	objects := memory.NewObjectStore(fixtureObjects(t, fx, blobs, now))
 	return httptest.NewServer(httpapi.New(httpapi.Options{
 		ServerVersion: "test",
@@ -411,6 +421,11 @@ func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map
 			t.Fatalf("%s: reading response: %v", name, err)
 		}
 
+		// Captures apply inside the expectation too, so a later step can
+		// expect the id an earlier one created.
+		if s.Expect.JSON != nil {
+			s.Expect.JSON = json.RawMessage(sub(string(s.Expect.JSON)))
+		}
 		check(t, name, s.Expect, resp, respBody, statusOf)
 
 		for key, from := range s.Capture {

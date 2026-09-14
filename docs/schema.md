@@ -68,9 +68,8 @@ Notes:
 - `api_keys.secret` is stored in usable form, as ADR-0003 requires. File
   permissions on the database are the boundary. Encryption at rest is a
   listed revisit, not a v1 feature.
-- `api_keys.created_at` is ahead of the domain type, which has no such field
-  yet. It will when key management arrives with the authorization model;
-  the adapter fills it from the clock on insert until then.
+- `api_keys.created_at` was ahead of the domain type until version 4 gave
+  the type a `CreatedAt` field; see there.
 - `buckets` has no row count or size column. Those are derived from
   `objects` when needed, and cached only if a measurement says they must be.
 - Listing buckets is `SELECT ... FROM buckets ORDER BY name`, a walk of the
@@ -152,6 +151,37 @@ Notes:
 - Expired sessions stay in the table until a sweep removes them and their
   files; until then they answer `session_not_active`. The sweep is not in
   this version.
+
+## Version 4: key management
+
+```sql
+ALTER TABLE api_keys ADD COLUMN name   TEXT    NOT NULL DEFAULT '';
+ALTER TABLE api_keys ADD COLUMN admin  INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE api_keys ADD COLUMN scopes TEXT    NOT NULL DEFAULT '{}';
+```
+
+Notes:
+
+- Three `ALTER TABLE ... ADD COLUMN` statements rather than a rebuild.
+  SQLite's `ADD COLUMN` on a `STRICT`, `WITHOUT ROWID` table is allowed as
+  long as the column has a default and is not a primary key, which these
+  satisfy, and it does not rewrite the table.
+- Rows that predate the migration get `name = ''`, `admin = 0`, `scopes =
+  '{}'`: a key with no access at all. The only such row in practice is the
+  bootstrap key, which `cmd/tunna` upserts as an admin named `bootstrap` on
+  every start while the variable is set, so it heals itself on the first
+  start after the upgrade.
+- `scopes` is a JSON object mapping bucket name or `*` to `"read"` or
+  `"write"` (ADR-0008), stored as text like `uploads.parts` and `objects.metadata`.
+  It is never queried, only read whole with the row, so no index and no
+  `json_extract`.
+- `admin` and a non-empty `scopes` are exclusive on the wire; the store does
+  not enforce it, the handler's stage-4 validation does, so the rule lives
+  in one place.
+- `created_at` now has a domain field to fill. `CreateKey` writes the value
+  the caller passes (Unix seconds); `UpdateKey` never touches it.
+- Listing is `SELECT ... FROM api_keys ORDER BY id`, a walk of the primary
+  key, like buckets.
 
 ## Later versions, sketched
 

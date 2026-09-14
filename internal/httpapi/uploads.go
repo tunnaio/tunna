@@ -57,6 +57,21 @@ func toSessionRecord(s tunna.UploadSession) sessionRecord {
 	}
 }
 
+// sessionWritable is stage 3 for the upload routes, whose bucket comes from
+// the request body (initiate) or the loaded session (the rest) rather than
+// the path, so no wrapper can check it (ADR-0008). Callers run it after
+// upload_not_found and before the expiry check: an unknown session is not
+// found for everyone, a known one is forbidden without write on its
+// bucket. It writes the error and reports false.
+func sessionWritable(w http.ResponseWriter, r *http.Request, bucket string) bool {
+	k, _ := caller(r)
+	if !k.Allows(tunna.Write, bucket) {
+		writeError(w, codeForbidden, "write access to "+bucket+" is required", nil)
+		return false
+	}
+	return true
+}
+
 // createUpload answers POST /-/uploads: validates the body at stage 4, checks
 // the bucket exists, creates the blob the parts will write into, and records
 // the session. A store failure removes the blob so nothing is orphaned.
@@ -75,6 +90,10 @@ func (h *handler) createUpload(w http.ResponseWriter, r *http.Request) {
 			details["name"] = typeErr.Field
 		}
 		writeError(w, codeInvalidParameter, "body must be a JSON object", details)
+		return
+	}
+
+	if !sessionWritable(w, r, body.Bucket) {
 		return
 	}
 
@@ -181,6 +200,9 @@ func (h *handler) putUploadPart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, codeInternal, "upload lookup failed", nil)
 		return
 	}
+	if !sessionWritable(w, r, sess.Bucket) {
+		return
+	}
 	if h.now().After(sess.ExpiresAt) {
 		writeError(w, codeSessionNotActive, "upload session has expired", nil)
 		return
@@ -255,6 +277,9 @@ func (h *handler) getUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, codeInternal, "upload lookup failed", nil)
 		return
 	}
+	if !sessionWritable(w, r, sess.Bucket) {
+		return
+	}
 	if h.now().After(sess.ExpiresAt) {
 		writeError(w, codeSessionNotActive, "upload session has expired", nil)
 		return
@@ -274,6 +299,9 @@ func (h *handler) deleteUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, codeInternal, "upload lookup failed", nil)
+		return
+	}
+	if !sessionWritable(w, r, sess.Bucket) {
 		return
 	}
 	if h.now().After(sess.ExpiresAt) {
@@ -333,6 +361,9 @@ func (h *handler) completeUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, codeInternal, "upload lookup failed", nil)
+		return
+	}
+	if !sessionWritable(w, r, sess.Bucket) {
 		return
 	}
 	if h.now().After(sess.ExpiresAt) {

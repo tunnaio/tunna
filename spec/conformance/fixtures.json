@@ -1,22 +1,85 @@
 {
   "spec": "0.1.0-draft",
   "keys": {
-    "alice": { "id": "tk_alice", "secret": "test-secret-alice-not-real" },
-    "bob": { "id": "tk_bob", "secret": "test-secret-bob-not-real" },
-    "revoked": { "id": "tk_revoked", "secret": "test-secret-revoked-not-real", "disabled": true }
+    "alice": {
+      "id": "tk_alice",
+      "secret": "test-secret-alice-not-real",
+      "name": "alice",
+      "admin": true
+    },
+    "bob": {
+      "id": "tk_bob",
+      "secret": "test-secret-bob-not-real",
+      "name": "bob",
+      "admin": true
+    },
+    "revoked": {
+      "id": "tk_revoked",
+      "secret": "test-secret-revoked-not-real",
+      "name": "revoked",
+      "admin": true,
+      "disabled": true
+    },
+    "reader": {
+      "id": "tk_reader",
+      "secret": "test-secret-reader-not-real",
+      "name": "reader",
+      "scopes": {
+        "photos": "read"
+      }
+    },
+    "writer": {
+      "id": "tk_writer",
+      "secret": "test-secret-writer-not-real",
+      "name": "writer",
+      "scopes": {
+        "photos": "write",
+        "empty": "write"
+      }
+    },
+    "star": {
+      "id": "tk_star",
+      "secret": "test-secret-star-not-real",
+      "name": "star",
+      "scopes": {
+        "*": "read"
+      }
+    }
   },
   "buckets": {
     "photos": {
       "objects": [
-        { "key": "hello.txt", "content_type": "text/plain", "text": "hello, tunna\n" },
-        { "key": "2026/one.bin", "content_type": "application/octet-stream", "bytes": { "seed": 1, "length": 65536 } },
-        { "key": "2026/two.bin", "content_type": "application/octet-stream", "bytes": { "seed": 2, "length": 65536 } }
+        {
+          "key": "hello.txt",
+          "content_type": "text/plain",
+          "text": "hello, tunna\n"
+        },
+        {
+          "key": "2026/one.bin",
+          "content_type": "application/octet-stream",
+          "bytes": {
+            "seed": 1,
+            "length": 65536
+          }
+        },
+        {
+          "key": "2026/two.bin",
+          "content_type": "application/octet-stream",
+          "bytes": {
+            "seed": 2,
+            "length": 65536
+          }
+        }
       ]
     },
     "public-site": {
       "public": true,
       "objects": [
-        { "key": "index.html", "content_type": "text/html", "text": "<!doctype html><title>tunna</title>\n" }
+        {
+          "key": "index.html",
+          "content_type": "text/html",
+          "text": "<!doctype html><title>tunna</title>\n"
+        }
       ]
     },
     "empty": {}

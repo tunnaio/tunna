@@ -15,8 +15,8 @@ func TestKeyStoreContract(t *testing.T) {
 	storetest.KeyStore(t, func(t *testing.T, keys []tunna.APIKey) tunna.KeyStore {
 		db, _ := openFresh(t)
 		for _, k := range keys {
-			if err := db.PutKey(context.Background(), k); err != nil {
-				t.Fatalf("PutKey %s: %v", k.ID, err)
+			if err := db.CreateKey(context.Background(), k); err != nil {
+				t.Fatalf("CreateKey %s: %v", k.ID, err)
 			}
 		}
 		return db

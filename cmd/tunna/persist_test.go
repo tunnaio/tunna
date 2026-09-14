@@ -34,7 +34,7 @@ func TestBucketSurvivesRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.PutKey(context.Background(), tunna.APIKey{ID: key.ID, Secret: key.Secret}); err != nil {
+	if err := db.PutKey(context.Background(), tunna.APIKey{ID: key.ID, Secret: key.Secret, Name: "test", Admin: true}); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(httpapi.New(httpapi.Options{ServerVersion: "test", Keys: db, Buckets: db}))
@@ -105,7 +105,7 @@ func TestObjectSurvivesRestart(t *testing.T) {
 
 	// First life: key, bucket, object.
 	db, _, srv := open()
-	if err := db.PutKey(context.Background(), tunna.APIKey{ID: key.ID, Secret: key.Secret}); err != nil {
+	if err := db.PutKey(context.Background(), tunna.APIKey{ID: key.ID, Secret: key.Secret, Name: "test", Admin: true}); err != nil {
 		t.Fatal(err)
 	}
 	if status := signedRequest(t, srv, key, http.MethodPut, []string{"-", "buckets", "persist"}); status != http.StatusCreated {
@@ -178,7 +178,7 @@ func TestUploadSurvivesRestart(t *testing.T) {
 
 	// First life: initiate and send part 1 of 2.
 	db, srv := open()
-	if err := db.PutKey(context.Background(), tunna.APIKey{ID: key.ID, Secret: key.Secret}); err != nil {
+	if err := db.PutKey(context.Background(), tunna.APIKey{ID: key.ID, Secret: key.Secret, Name: "test", Admin: true}); err != nil {
 		t.Fatal(err)
 	}
 	if status := signedRequest(t, srv, key, http.MethodPut, []string{"-", "buckets", "persist"}); status != http.StatusCreated {

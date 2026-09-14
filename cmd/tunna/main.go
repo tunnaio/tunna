@@ -52,7 +52,7 @@ func run() error {
 	defer db.Close()
 
 	if cfg.BootstrapKeyID != "" {
-		if err := db.PutKey(ctx, tunna.APIKey{ID: cfg.BootstrapKeyID, Secret: cfg.BootstrapKeySecret}); err != nil {
+		if err := db.PutKey(ctx, tunna.APIKey{ID: cfg.BootstrapKeyID, Secret: cfg.BootstrapKeySecret, Admin: true, Name: "bootstrap"}); err != nil {
 			return fmt.Errorf("bootstrap key: %w", err)
 		}
 		slog.Info("bootstrap key upserted", "id", cfg.BootstrapKeyID)

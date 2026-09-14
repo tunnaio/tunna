@@ -42,8 +42,8 @@ func TestOpenAppliesMigrations(t *testing.T) {
 	if err := raw.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatalf("user_version: %v", err)
 	}
-	if version != 3 {
-		t.Errorf("user_version = %d, want 3", version)
+	if version != 4 {
+		t.Errorf("user_version = %d, want 4", version)
 	}
 
 	for _, table := range []string{"api_keys", "buckets", "objects", "uploads"} {
@@ -82,8 +82,8 @@ func TestOpenTwiceIsIdempotent(t *testing.T) {
 	if err := inspect(t, path).QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 3 {
-		t.Errorf("user_version after second open = %d, want 3", version)
+	if version != 4 {
+		t.Errorf("user_version after second open = %d, want 4", version)
 	}
 }
 

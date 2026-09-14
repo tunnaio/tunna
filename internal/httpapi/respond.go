@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/tunnaio/tunna"
@@ -33,17 +34,41 @@ func writeError(w http.ResponseWriter, c code, message string, details map[strin
 	})
 }
 
-// allowRead is the read rule for buckets (spec/wire.md 5.2 and 7): a public
-// bucket needs no caller, any other needs one. It writes the unauthenticated
-// error itself and reports false, so a handler just returns. Decided here
-// rather than by requireAuth because the answer depends on the bucket.
-func (h *handler) allowRead(w http.ResponseWriter, r *http.Request, b tunna.Bucket) bool {
-	if !b.Public {
-		_, ok := r.Context().Value(callerKey{}).(tunna.APIKey)
-		if !ok {
-			writeAuthError(w, codeUnauthenticated, "reading from a private bucket requires credentials", nil)
-			return false
-		}
+// readableBucket is stages 2 and 3 plus the bucket lookup for the read
+// routes, where a public bucket needs no caller (spec/wire.md 5.2 and 7,
+// ADR-0008). A wrapper cannot decide this because "public" is only known
+// from the row. The answers, after one lookup:
+//
+//   - found and public: anyone may read.
+//   - caller allowed read on the name: the bucket, or bucket_not_found;
+//     such a caller may know whether it exists.
+//   - caller not allowed: forbidden, found or not, so nothing is disclosed.
+//   - no caller: unauthenticated when found, bucket_not_found otherwise.
+//
+// It writes the error and reports false, so a handler just returns.
+func (h *handler) readableBucket(w http.ResponseWriter, r *http.Request, name string) (tunna.Bucket, bool) {
+	k, authed := caller(r)
+	b, err := h.buckets.GetBucket(r.Context(), name)
+	if err != nil && !errors.Is(err, tunna.ErrNotFound) {
+		writeError(w, codeInternal, "bucket lookup failed", nil)
+		return tunna.Bucket{}, false
 	}
-	return true
+	found := err == nil
+	switch {
+	case found && b.Public:
+		return b, true
+	case authed && k.Allows(tunna.Read, name):
+		// allowed to know wether it exists
+	case authed:
+		writeError(w, codeForbidden, "read access to "+name+" is required", nil)
+		return tunna.Bucket{}, false
+	case found:
+		writeAuthError(w, codeUnauthenticated, "reading from a private bucket requires credentials", nil)
+		return tunna.Bucket{}, false
+	}
+	if !found {
+		writeError(w, codeBucketNotFound, "no bucket named "+name, map[string]any{"bucket": name})
+		return tunna.Bucket{}, false
+	}
+	return b, true
 }

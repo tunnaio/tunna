@@ -93,10 +93,10 @@ func New(o Options) http.Handler {
 	mux.HandleFunc("GET /-/version", h.version)
 
 	// buckets routes
-	mux.HandleFunc("GET /-/buckets", requireAuth(h.listBuckets))
-	mux.HandleFunc("GET /-/buckets/{bucket}", requireAuth(h.getBucket))
-	mux.HandleFunc("PUT /-/buckets/{bucket}", requireAuth(h.createBucket))
-	mux.HandleFunc("DELETE /-/buckets/{bucket}", requireAuth(h.deleteBucket))
+	mux.HandleFunc("GET /-/buckets", chain(h.listBuckets, requireAuth))
+	mux.HandleFunc("GET /-/buckets/{bucket}", chain(h.getBucket, requireAuth, requireAccess(tunna.Read)))
+	mux.HandleFunc("PUT /-/buckets/{bucket}", chain(h.createBucket, requireAuth, requireAdmin))
+	mux.HandleFunc("DELETE /-/buckets/{bucket}", chain(h.deleteBucket, requireAuth, requireAdmin))
 
 	// uploads routes
 	mux.HandleFunc("POST /-/uploads", requireAuth(h.createUpload))
@@ -106,14 +106,35 @@ func New(o Options) http.Handler {
 	mux.HandleFunc("POST /-/uploads/{id}/complete", requireAuth(h.completeUpload))
 
 	// object routes
-	mux.HandleFunc("PUT /{bucket}/{key...}", reserved(requireAuth(h.putObject)))
-	mux.HandleFunc("GET /{bucket}/{key...}", reserved(h.getObject))
-	mux.HandleFunc("DELETE /{bucket}/{key...}", reserved(requireAuth(h.deleteObject)))
-	mux.HandleFunc("GET /{bucket}", reserved(h.listObjects))
+	mux.HandleFunc("PUT /{bucket}/{key...}", chain(h.putObject, reserved, requireAuth, requireAccess(tunna.Write)))
+	mux.HandleFunc("GET /{bucket}/{key...}", chain(h.getObject, reserved))
+	mux.HandleFunc("DELETE /{bucket}/{key...}", chain(h.deleteObject, reserved, requireAuth, requireAccess(tunna.Write)))
+	mux.HandleFunc("GET /{bucket}", chain(h.listObjects, reserved))
+
+	// key management
+	mux.HandleFunc("GET /-/keys", chain(h.listKeys, requireAuth, requireAdmin))
+	mux.HandleFunc("POST /-/keys", chain(h.createKey, requireAuth, requireAdmin))
+	mux.HandleFunc("GET /-/keys/{id}", chain(h.getKey, requireAuth, requireAdmin))
+	mux.HandleFunc("PATCH /-/keys/{id}", chain(h.patchKey, requireAuth, requireAdmin))
+	mux.HandleFunc("DELETE /-/keys/{id}", chain(h.deleteKey, requireAuth, requireAdmin))
+	mux.HandleFunc("POST /-/keys/{id}/rotate", chain(h.rotateKey, requireAuth, requireAdmin))
 
 	mux.HandleFunc("/", h.notFound)
 
 	return h.authenticate(mux)
+}
+
+// middleware is one rule of the ladder (ADR-0004) wrapped around a handler.
+// requireAuth, requireAdmin and reserved have this shape as they are;
+// requireAccess takes a level first and returns one.
+type middleware func(http.HandlerFunc) http.HandlerFunc
+
+// chain wraps h so that the first middleware listed runs first.
+func chain(h http.HandlerFunc, ms ...middleware) http.HandlerFunc {
+	for i := len(ms) - 1; i >= 0; i-- {
+		h = ms[i](h)
+	}
+	return h
 }
 
 // reserved is stage 1's routing rule: "/-/" is the control plane, so an

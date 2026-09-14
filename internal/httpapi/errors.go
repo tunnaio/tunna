@@ -41,6 +41,7 @@ const (
 	codeBucketNotFound   code = "bucket_not_found"
 	codeObjectNotFound   code = "object_not_found"
 	codeUploadNotFound   code = "upload_not_found"
+	codeKeyNotFound      code = "key_not_found"
 	codeBucketExists     code = "bucket_exists"
 	codeBucketNotEmpty   code = "bucket_not_empty"
 	codeUploadIncomplete code = "upload_incomplete"
@@ -87,6 +88,7 @@ var statusOf = map[code]int{
 	codeBucketNotFound:   http.StatusNotFound,
 	codeObjectNotFound:   http.StatusNotFound,
 	codeUploadNotFound:   http.StatusNotFound,
+	codeKeyNotFound:      http.StatusNotFound,
 	codeBucketExists:     http.StatusConflict,
 	codeBucketNotEmpty:   http.StatusConflict,
 	codeUploadIncomplete: http.StatusConflict,

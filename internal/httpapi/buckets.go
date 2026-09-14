@@ -92,9 +92,10 @@ func (h *handler) createBucket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toBucketRecord(bucket))
 }
 
-// listBuckets answers GET /-/buckets with every bucket in name order, wrapped
-// as {"buckets": [...]}. The slice is built non-nil so an empty list encodes
-// as [] rather than null.
+// listBuckets answers GET /-/buckets with the buckets the caller may read,
+// in name order, wrapped as {"buckets": [...]}. An admin sees every bucket;
+// a scoped key sees those its scopes cover (ADR-0008). The slice is built
+// non-nil so an empty list encodes as [] rather than null.
 func (h *handler) listBuckets(w http.ResponseWriter, r *http.Request) {
 	list, err := h.buckets.ListBuckets(r.Context())
 	if err != nil {
@@ -102,8 +103,12 @@ func (h *handler) listBuckets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	k, _ := caller(r)
 	listRecords := make([]bucketRecord, 0, len(list))
 	for _, b := range list {
+		if !k.Allows(tunna.Read, b.Name) {
+			continue
+		}
 		listRecords = append(listRecords, toBucketRecord(b))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

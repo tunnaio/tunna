@@ -158,12 +158,55 @@ func (h *handler) authenticate(next http.Handler) http.Handler {
 	})
 }
 
+// caller returns the authenticated key, if stage 2 found one.
+func caller(r *http.Request) (tunna.APIKey, bool) {
+	k, ok := r.Context().Value(callerKey{}).(tunna.APIKey)
+	return k, ok
+}
+
 // requireAuth is the first rule of stage 3 (ADR-0004): the wrapped route
 // needs a verified caller. Routes not wrapped are anonymous by declaration.
 func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := r.Context().Value(callerKey{}).(tunna.APIKey); !ok {
+		if _, ok := caller(r); !ok {
 			writeAuthError(w, codeUnauthenticated, "this route requires credentials", nil)
+			return
+		}
+
+		next(w, r)
+	}
+}
+
+// requireAccess is stage 3 for routes whose bucket is the {bucket} path
+// segment: the caller must be allowed level on it (ADR-0008). It answers
+// forbidden before any lookup, so the response is the same whether or not
+// the bucket exists, and before stage-4 validation, so a scoped key never
+// learns whether a name it cannot read is even valid. It sits inside
+// requireAuth in every chain; on its own, an anonymous request would land
+// on the zero key and be told forbidden rather than unauthenticated.
+func requireAccess(level tunna.Access) middleware {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			bucket := r.PathValue("bucket")
+			k, _ := caller(r)
+			if !k.Allows(level, bucket) {
+				writeError(w, codeForbidden, string(level)+" access to "+bucket+" is required", nil)
+				return
+			}
+
+			next(w, r)
+		}
+	}
+}
+
+// requireAdmin is stage 3 for the control plane: bucket create and delete
+// and every /-/keys route need an admin key (ADR-0008). Like requireAccess
+// it sits inside requireAuth.
+func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		k, _ := caller(r)
+		if !k.Admin {
+			writeError(w, codeForbidden, "this route requires an admin key", nil)
 			return
 		}
 

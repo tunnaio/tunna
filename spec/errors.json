@@ -1,48 +1,249 @@
 {
   "spec": "0.1.0-draft",
   "stages": [
-    { "stage": 1, "name": "syntax" },
-    { "stage": 2, "name": "authentication" },
-    { "stage": 3, "name": "authorization" },
-    { "stage": 4, "name": "validation" },
-    { "stage": 5, "name": "body" },
-    { "stage": 6, "name": "state" }
+    {
+      "stage": 1,
+      "name": "syntax"
+    },
+    {
+      "stage": 2,
+      "name": "authentication"
+    },
+    {
+      "stage": 3,
+      "name": "authorization"
+    },
+    {
+      "stage": 4,
+      "name": "validation"
+    },
+    {
+      "stage": 5,
+      "name": "body"
+    },
+    {
+      "stage": 6,
+      "name": "state"
+    }
   ],
   "errors": [
-    { "code": "malformed_request", "status": 400, "stage": 1, "description": "The request line, path, query or a header the signature depends on could not be parsed. Also used when both header-form and presigned-form credentials are present." },
-    { "code": "unknown_route", "status": 404, "stage": 1, "description": "No endpoint matches the path." },
-    { "code": "method_not_allowed", "status": 405, "stage": 1, "description": "The path exists but not for this method. The response carries an Allow header listing the methods that do." },
-
-    { "code": "unauthenticated", "status": 401, "stage": 2, "description": "No credentials on a route that requires them." },
-    { "code": "unknown_key", "status": 401, "stage": 2, "description": "The key id does not exist or is disabled." },
-    { "code": "bad_signature", "status": 401, "stage": 2, "description": "The signature does not match. The expected value is never disclosed." },
-    { "code": "missing_signed_header", "status": 401, "stage": 2, "description": "A header named in the signed-headers list is absent from the request.", "details": { "header": "string" } },
-    { "code": "clock_skew", "status": 401, "stage": 2, "description": "The request timestamp is outside the server's skew window.", "details": { "server_time": "integer", "skew_seconds": "integer" } },
-    { "code": "presign_expired", "status": 401, "stage": 2, "description": "The presigned URL's expiry is in the past.", "details": { "server_time": "integer" } },
-    { "code": "presign_too_long", "status": 401, "stage": 2, "description": "The presigned URL's expiry is further ahead than the server allows.", "details": { "max_seconds": "integer" } },
-
-    { "code": "forbidden", "status": 403, "stage": 3, "description": "The key may not perform this operation on this resource. Whether the resource exists is not disclosed." },
-
-    { "code": "invalid_bucket_name", "status": 422, "stage": 4, "description": "The bucket name breaks the naming rule." },
-    { "code": "invalid_key", "status": 422, "stage": 4, "description": "The object key is empty, too long, or contains a forbidden code point." },
-    { "code": "invalid_parameter", "status": 422, "stage": 4, "description": "A query parameter, header, or JSON field is present but has an invalid value or combination.", "details": { "name": "string" } },
-    { "code": "invalid_part_size", "status": 422, "stage": 4, "description": "The declared part size is outside the server's limits.", "details": { "min": "integer", "max": "integer" } },
-    { "code": "invalid_part_number", "status": 422, "stage": 4, "description": "The part number is below 1 or above the server's maximum.", "details": { "max": "integer" } },
-    { "code": "session_not_active", "status": 422, "stage": 4, "description": "The upload session has been completed, aborted, or has expired." },
-
-    { "code": "body_too_large", "status": 413, "stage": 5, "description": "The body exceeds the applicable limit: the single-request object cap, or the session's part size." },
-    { "code": "body_length_mismatch", "status": 422, "stage": 5, "description": "The body ended at a different length than Content-Length declared." },
-    { "code": "checksum_mismatch", "status": 422, "stage": 5, "description": "The body's CRC32C does not equal the X-Tunna-Checksum header; or, at complete, a supplied per-part checksum does not equal the one recorded for that part (details.part names it).", "details": { "algorithm": "string", "part": "integer" } },
-
-    { "code": "bucket_not_found", "status": 404, "stage": 6, "description": "The bucket does not exist." },
-    { "code": "object_not_found", "status": 404, "stage": 6, "description": "The object does not exist in the bucket." },
-    { "code": "upload_not_found", "status": 404, "stage": 6, "description": "The upload session does not exist." },
-    { "code": "bucket_exists", "status": 409, "stage": 6, "description": "A bucket with this name already exists." },
-    { "code": "bucket_not_empty", "status": 409, "stage": 6, "description": "The bucket still contains objects or active upload sessions." },
-    { "code": "upload_incomplete", "status": 409, "stage": 6, "description": "Complete was called but not every part in 1..parts has been received.", "details": { "missing": "array" } },
-    { "code": "part_size_mismatch", "status": 409, "stage": 6, "description": "At complete, a part other than the last has a length different from the session's part size.", "details": { "part": "integer" } },
-
-    { "code": "internal", "status": 500, "stage": 6, "description": "The server failed in a way that is not the client's fault. The response never includes internal detail.", "retryable": true },
-    { "code": "unavailable", "status": 503, "stage": 6, "description": "The server is shutting down or temporarily cannot serve. Retry after a delay.", "details": { "retry_after_seconds": "integer" }, "retryable": true }
+    {
+      "code": "malformed_request",
+      "status": 400,
+      "stage": 1,
+      "description": "The request line, path, query or a header the signature depends on could not be parsed. Also used when both header-form and presigned-form credentials are present."
+    },
+    {
+      "code": "unknown_route",
+      "status": 404,
+      "stage": 1,
+      "description": "No endpoint matches the path."
+    },
+    {
+      "code": "method_not_allowed",
+      "status": 405,
+      "stage": 1,
+      "description": "The path exists but not for this method. The response carries an Allow header listing the methods that do."
+    },
+    {
+      "code": "unauthenticated",
+      "status": 401,
+      "stage": 2,
+      "description": "No credentials on a route that requires them."
+    },
+    {
+      "code": "unknown_key",
+      "status": 401,
+      "stage": 2,
+      "description": "The key id does not exist or is disabled."
+    },
+    {
+      "code": "bad_signature",
+      "status": 401,
+      "stage": 2,
+      "description": "The signature does not match. The expected value is never disclosed."
+    },
+    {
+      "code": "missing_signed_header",
+      "status": 401,
+      "stage": 2,
+      "description": "A header named in the signed-headers list is absent from the request.",
+      "details": {
+        "header": "string"
+      }
+    },
+    {
+      "code": "clock_skew",
+      "status": 401,
+      "stage": 2,
+      "description": "The request timestamp is outside the server's skew window.",
+      "details": {
+        "server_time": "integer",
+        "skew_seconds": "integer"
+      }
+    },
+    {
+      "code": "presign_expired",
+      "status": 401,
+      "stage": 2,
+      "description": "The presigned URL's expiry is in the past.",
+      "details": {
+        "server_time": "integer"
+      }
+    },
+    {
+      "code": "presign_too_long",
+      "status": 401,
+      "stage": 2,
+      "description": "The presigned URL's expiry is further ahead than the server allows.",
+      "details": {
+        "max_seconds": "integer"
+      }
+    },
+    {
+      "code": "forbidden",
+      "status": 403,
+      "stage": 3,
+      "description": "The key may not perform this operation on this resource. Whether the resource exists is not disclosed."
+    },
+    {
+      "code": "invalid_bucket_name",
+      "status": 422,
+      "stage": 4,
+      "description": "The bucket name breaks the naming rule."
+    },
+    {
+      "code": "invalid_key",
+      "status": 422,
+      "stage": 4,
+      "description": "The object key is empty, too long, or contains a forbidden code point."
+    },
+    {
+      "code": "invalid_parameter",
+      "status": 422,
+      "stage": 4,
+      "description": "A query parameter, header, or JSON field is present but has an invalid value or combination.",
+      "details": {
+        "name": "string"
+      }
+    },
+    {
+      "code": "invalid_part_size",
+      "status": 422,
+      "stage": 4,
+      "description": "The declared part size is outside the server's limits.",
+      "details": {
+        "min": "integer",
+        "max": "integer"
+      }
+    },
+    {
+      "code": "invalid_part_number",
+      "status": 422,
+      "stage": 4,
+      "description": "The part number is below 1 or above the server's maximum.",
+      "details": {
+        "max": "integer"
+      }
+    },
+    {
+      "code": "session_not_active",
+      "status": 422,
+      "stage": 4,
+      "description": "The upload session has been completed, aborted, or has expired."
+    },
+    {
+      "code": "body_too_large",
+      "status": 413,
+      "stage": 5,
+      "description": "The body exceeds the applicable limit: the single-request object cap, or the session's part size."
+    },
+    {
+      "code": "body_length_mismatch",
+      "status": 422,
+      "stage": 5,
+      "description": "The body ended at a different length than Content-Length declared."
+    },
+    {
+      "code": "checksum_mismatch",
+      "status": 422,
+      "stage": 5,
+      "description": "The body's CRC32C does not equal the X-Tunna-Checksum header; or, at complete, a supplied per-part checksum does not equal the one recorded for that part (details.part names it).",
+      "details": {
+        "algorithm": "string",
+        "part": "integer"
+      }
+    },
+    {
+      "code": "bucket_not_found",
+      "status": 404,
+      "stage": 6,
+      "description": "The bucket does not exist."
+    },
+    {
+      "code": "object_not_found",
+      "status": 404,
+      "stage": 6,
+      "description": "The object does not exist in the bucket."
+    },
+    {
+      "code": "upload_not_found",
+      "status": 404,
+      "stage": 6,
+      "description": "The upload session does not exist."
+    },
+    {
+      "code": "key_not_found",
+      "status": 404,
+      "stage": 6,
+      "description": "The API key id does not exist. Only reachable by admin keys on the /-/keys routes; authentication failures for unknown keys are unknown_key."
+    },
+    {
+      "code": "bucket_exists",
+      "status": 409,
+      "stage": 6,
+      "description": "A bucket with this name already exists."
+    },
+    {
+      "code": "bucket_not_empty",
+      "status": 409,
+      "stage": 6,
+      "description": "The bucket still contains objects or active upload sessions."
+    },
+    {
+      "code": "upload_incomplete",
+      "status": 409,
+      "stage": 6,
+      "description": "Complete was called but not every part in 1..parts has been received.",
+      "details": {
+        "missing": "array"
+      }
+    },
+    {
+      "code": "part_size_mismatch",
+      "status": 409,
+      "stage": 6,
+      "description": "At complete, a part other than the last has a length different from the session's part size.",
+      "details": {
+        "part": "integer"
+      }
+    },
+    {
+      "code": "internal",
+      "status": 500,
+      "stage": 6,
+      "description": "The server failed in a way that is not the client's fault. The response never includes internal detail.",
+      "retryable": true
+    },
+    {
+      "code": "unavailable",
+      "status": 503,
+      "stage": 6,
+      "description": "The server is shutting down or temporarily cannot serve. Retry after a delay.",
+      "details": {
+        "retry_after_seconds": "integer"
+      },
+      "retryable": true
+    }
   ]
 }

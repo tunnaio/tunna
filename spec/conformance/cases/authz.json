@@ -1,0 +1,111 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "authz-reader-can-read-scoped-bucket",
+      "decision": "ADR-0008",
+      "fixtures": ["reader", "photos"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["photos", "hello.txt"], "auth": { "key": "reader" } }, "expect": { "status": 200 } },
+        { "request": { "method": "GET", "path": ["photos"], "auth": { "key": "reader" } }, "expect": { "status": 200 } },
+        { "request": { "method": "GET", "path": ["-", "buckets", "photos"], "auth": { "key": "reader" } }, "expect": { "status": 200 } }
+      ]
+    },
+    {
+      "name": "authz-reader-cannot-write-scoped-bucket",
+      "decision": "ADR-0008",
+      "fixtures": ["reader", "photos"],
+      "steps": [
+        { "request": { "method": "PUT", "path": ["photos", "new.txt"], "auth": { "key": "reader" }, "body": { "text": "x" }, "expect_continue": true }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "DELETE", "path": ["photos", "hello.txt"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "GET", "path": ["photos", "hello.txt"], "auth": { "key": "reader" } }, "expect": { "status": 200 } }
+      ]
+    },
+    {
+      "name": "authz-forbidden-does-not-disclose-existence",
+      "description": "Stage 3 before stage 6: a key without scope on a bucket gets forbidden whether the bucket exists (empty) or not (no-such-bucket), and whether the object exists or not.",
+      "decision": "ADR-0008",
+      "fixtures": ["reader", "empty"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["empty", "anything.txt"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "GET", "path": ["no-such-bucket", "anything.txt"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "GET", "path": ["-", "buckets", "no-such-bucket"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "PUT", "path": ["no-such-bucket", "a.txt"], "auth": { "key": "reader" }, "body": { "text": "x" }, "expect_continue": true }, "expect": { "error": "forbidden" } }
+      ]
+    },
+    {
+      "name": "authz-writer-can-write-and-read",
+      "decision": "ADR-0008",
+      "fixtures": ["writer", "empty"],
+      "steps": [
+        { "request": { "method": "PUT", "path": ["empty", "w.txt"], "auth": { "key": "writer" }, "body": { "text": "written" } }, "expect": { "status": 201 } },
+        { "request": { "method": "GET", "path": ["empty", "w.txt"], "auth": { "key": "writer" } }, "expect": { "status": 200 } },
+        { "request": { "method": "DELETE", "path": ["empty", "w.txt"], "auth": { "key": "writer" } }, "expect": { "status": 204 } }
+      ]
+    },
+    {
+      "name": "authz-writer-cannot-manage-buckets-or-keys",
+      "decision": "ADR-0008",
+      "fixtures": ["writer", "empty"],
+      "steps": [
+        { "request": { "method": "PUT", "path": ["-", "buckets", "mine"], "auth": { "key": "writer" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "DELETE", "path": ["-", "buckets", "empty"], "auth": { "key": "writer" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "GET", "path": ["-", "keys"], "auth": { "key": "writer" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "POST", "path": ["-", "keys"], "auth": { "key": "writer" }, "body": { "json": { "name": "x", "admin": true } } }, "expect": { "error": "forbidden" } }
+      ]
+    },
+    {
+      "name": "authz-bucket-list-is-filtered",
+      "description": "reader sees only photos; star (read on *) sees every bucket; admin sees every bucket.",
+      "decision": "ADR-0008",
+      "steps": [
+        { "request": { "method": "GET", "path": ["-", "buckets"], "auth": { "key": "reader" } }, "expect": { "status": 200, "json": { "buckets": [ { "name": "photos" } ] } } },
+        { "request": { "method": "GET", "path": ["-", "buckets"], "auth": { "key": "star" } }, "expect": { "status": 200, "json": { "buckets": [ { "name": "empty" }, { "name": "photos" }, { "name": "public-site" } ] } } },
+        { "request": { "method": "GET", "path": ["-", "buckets"], "auth": { "key": "alice" } }, "expect": { "status": 200, "json": { "buckets": [ { "name": "empty" }, { "name": "photos" }, { "name": "public-site" } ] } } }
+      ]
+    },
+    {
+      "name": "authz-wildcard-read-any-bucket-but-no-write",
+      "decision": "ADR-0008",
+      "fixtures": ["star", "empty", "photos"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["photos", "hello.txt"], "auth": { "key": "star" } }, "expect": { "status": 200 } },
+        { "request": { "method": "GET", "path": ["empty"], "auth": { "key": "star" } }, "expect": { "status": 200 } },
+        { "request": { "method": "PUT", "path": ["empty", "x.txt"], "auth": { "key": "star" }, "body": { "text": "x" }, "expect_continue": true }, "expect": { "error": "forbidden" } }
+      ]
+    },
+    {
+      "name": "authz-uploads-need-write-on-session-bucket",
+      "description": "A session in photos is created by writer; reader cannot touch it (forbidden, not not-found, since the session exists); an unknown session is not found for everyone.",
+      "decision": "ADR-0008",
+      "fixtures": ["writer", "reader", "photos"],
+      "steps": [
+        { "request": { "method": "POST", "path": ["-", "uploads"], "auth": { "key": "writer" }, "body": { "json": { "bucket": "photos", "key": "up.bin", "part_size": 5242880 } } }, "expect": { "status": 201 }, "capture": { "id": "/id" } },
+        { "request": { "method": "GET", "path": ["-", "uploads", "{{id}}"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "DELETE", "path": ["-", "uploads", "{{id}}"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "GET", "path": ["-", "uploads", "up_nope"], "auth": { "key": "reader" } }, "expect": { "error": "upload_not_found" } },
+        { "request": { "method": "POST", "path": ["-", "uploads"], "auth": { "key": "reader" }, "body": { "json": { "bucket": "photos", "key": "no.bin", "part_size": 5242880 } } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "DELETE", "path": ["-", "uploads", "{{id}}"], "auth": { "key": "writer" } }, "expect": { "status": 204 } }
+      ]
+    },
+    {
+      "name": "authz-presigned-url-carries-key-scope",
+      "description": "A presigned GET from reader works; a presigned PUT from reader is forbidden, since the URL carries the key's scope.",
+      "decision": "ADR-0008",
+      "fixtures": ["reader", "photos"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["photos", "hello.txt"], "auth": { "presign": { "key": "reader", "expires_in_seconds": 300 } } }, "expect": { "status": 200 } },
+        { "request": { "method": "PUT", "path": ["photos", "p.txt"], "auth": { "presign": { "key": "reader", "expires_in_seconds": 300 } }, "body": { "text": "x" }, "expect_continue": true }, "expect": { "error": "forbidden" } }
+      ]
+    },
+    {
+      "name": "authz-public-bucket-still-anonymous",
+      "description": "Scoping does not change anonymous reads on a public bucket.",
+      "decision": "ADR-0008",
+      "fixtures": ["public-site"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["public-site", "index.html"], "auth": "none" }, "expect": { "status": 200 } }
+      ]
+    }
+  ]
+}

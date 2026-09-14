@@ -1,0 +1,29 @@
+{
+  "spec": "0.1.0-draft",
+  "rule": "An admin key is allowed everything. A scoped key is allowed a level on a bucket when its scopes hold that bucket, or the wildcard *, at that level or higher; write includes read. Bucket names match exactly, case-sensitively. Disabled is not part of this rule; it is refused at authentication.",
+  "cases": [
+    { "name": "admin-read-any", "key": { "admin": true }, "level": "read", "bucket": "photos", "allowed": true },
+    { "name": "admin-write-any", "key": { "admin": true }, "level": "write", "bucket": "anything", "allowed": true },
+    { "name": "admin-ignores-scopes", "key": { "admin": true, "scopes": { "photos": "read" } }, "level": "write", "bucket": "docs", "allowed": true, "reason": "scopes are ignored when admin is true; the API refuses to set both, but a record read back must still be unambiguous" },
+
+    { "name": "scoped-read-on-listed-bucket", "key": { "scopes": { "photos": "read" } }, "level": "read", "bucket": "photos", "allowed": true },
+    { "name": "scoped-read-cannot-write", "key": { "scopes": { "photos": "read" } }, "level": "write", "bucket": "photos", "allowed": false },
+    { "name": "scoped-read-other-bucket", "key": { "scopes": { "photos": "read" } }, "level": "read", "bucket": "docs", "allowed": false },
+    { "name": "scoped-write-includes-read", "key": { "scopes": { "photos": "write" } }, "level": "read", "bucket": "photos", "allowed": true },
+    { "name": "scoped-write-on-listed-bucket", "key": { "scopes": { "photos": "write" } }, "level": "write", "bucket": "photos", "allowed": true },
+    { "name": "scoped-two-buckets", "key": { "scopes": { "photos": "read", "docs": "write" } }, "level": "write", "bucket": "docs", "allowed": true },
+    { "name": "scoped-two-buckets-wrong-level", "key": { "scopes": { "photos": "read", "docs": "write" } }, "level": "write", "bucket": "photos", "allowed": false },
+
+    { "name": "wildcard-read-any-bucket", "key": { "scopes": { "*": "read" } }, "level": "read", "bucket": "never-created", "allowed": true },
+    { "name": "wildcard-read-cannot-write", "key": { "scopes": { "*": "read" } }, "level": "write", "bucket": "photos", "allowed": false },
+    { "name": "wildcard-write-everything", "key": { "scopes": { "*": "write" } }, "level": "write", "bucket": "photos", "allowed": true },
+    { "name": "wildcard-plus-specific-takes-the-higher", "key": { "scopes": { "*": "read", "photos": "write" } }, "level": "write", "bucket": "photos", "allowed": true },
+    { "name": "specific-does-not-lower-wildcard", "key": { "scopes": { "*": "write", "photos": "read" } }, "level": "write", "bucket": "photos", "allowed": true, "reason": "levels only grant; a specific entry cannot take away what the wildcard gives" },
+
+    { "name": "no-scopes-nothing", "key": {}, "level": "read", "bucket": "photos", "allowed": false },
+    { "name": "empty-scopes-nothing", "key": { "scopes": {} }, "level": "read", "bucket": "photos", "allowed": false },
+    { "name": "bucket-match-is-case-sensitive", "key": { "scopes": { "photos": "write" } }, "level": "read", "bucket": "Photos", "allowed": false },
+    { "name": "bucket-match-is-exact-not-prefix", "key": { "scopes": { "photos": "write" } }, "level": "read", "bucket": "photos-2026", "allowed": false },
+    { "name": "wildcard-is-only-the-whole-name", "key": { "scopes": { "photo*": "write" } }, "level": "read", "bucket": "photos", "allowed": false, "reason": "* is a literal bucket-name wildcard only when it is the entire scope key" }
+  ]
+}

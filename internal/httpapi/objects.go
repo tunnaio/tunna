@@ -199,6 +199,11 @@ func (h *handler) getObject(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 	key := r.PathValue("key")
 
+	_, allowed := h.readableBucket(w, r, bucket)
+	if !allowed {
+		return
+	}
+
 	if err := tunna.ValidateBucketName(bucket); err != nil {
 		writeError(w, codeInvalidBucketName, err.Error(), nil)
 		return
@@ -209,18 +214,6 @@ func (h *handler) getObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b, err := h.buckets.GetBucket(r.Context(), bucket)
-	if errors.Is(err, tunna.ErrNotFound) {
-		writeError(w, codeBucketNotFound, "no bucket named "+bucket, map[string]any{"bucket": bucket})
-		return
-	}
-	if err != nil {
-		writeError(w, codeInternal, "bucket lookup failed", nil)
-		return
-	}
-	if !h.allowRead(w, r, b) {
-		return
-	}
 	obj, err := h.objects.GetObject(r.Context(), bucket, key)
 	if errors.Is(err, tunna.ErrNotFound) {
 		writeError(w, codeObjectNotFound, "no key named "+key, map[string]any{"key": key})
@@ -295,6 +288,11 @@ func (h *handler) deleteObject(w http.ResponseWriter, r *http.Request) {
 func (h *handler) listObjects(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 
+	_, allowed := h.readableBucket(w, r, bucket)
+	if !allowed {
+		return
+	}
+
 	if err := tunna.ValidateBucketName(bucket); err != nil {
 		writeError(w, codeInvalidBucketName, err.Error(), nil)
 		return
@@ -330,18 +328,6 @@ func (h *handler) listObjects(w http.ResponseWriter, r *http.Request) {
 		limit = 1000
 	}
 
-	b, err := h.buckets.GetBucket(r.Context(), bucket)
-	if errors.Is(err, tunna.ErrNotFound) {
-		writeError(w, codeBucketNotFound, "no bucket named "+bucket, map[string]any{"bucket": bucket})
-		return
-	}
-	if err != nil {
-		writeError(w, codeInternal, "bucket lookup failed", nil)
-		return
-	}
-	if !h.allowRead(w, r, b) {
-		return
-	}
 	list, err := h.objects.ListObjects(r.Context(), bucket, prefix, after, limit)
 	if err != nil {
 		writeError(w, codeInternal, "object lookup failed", nil)

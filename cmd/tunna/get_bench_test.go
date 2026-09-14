@@ -40,7 +40,7 @@ func BenchmarkSmallGET(b *testing.B) {
 	}
 	key := sig.Key{ID: "tk_bench", Secret: "bench-secret-not-real"}
 	ctx := context.Background()
-	if err := db.PutKey(ctx, tunna.APIKey{ID: key.ID, Secret: key.Secret}); err != nil {
+	if err := db.PutKey(ctx, tunna.APIKey{ID: key.ID, Secret: key.Secret, Name: "test", Admin: true}); err != nil {
 		b.Fatal(err)
 	}
 	srv := httptest.NewServer(httpapi.New(httpapi.Options{ServerVersion: "bench", Keys: db, Buckets: db, Objects: db, Uploads: db, Blobs: blobs}))

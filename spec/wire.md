@@ -121,6 +121,34 @@ Health and version, and reads on buckets marked public, need no credentials.
 A request that presents credentials to an anonymous route is still verified
 and fails if they are bad.
 
+### 3.6 Authorization [ADR-0008]
+
+Stage 3 decides what an authenticated key may do. Two kinds of key:
+
+- **admin**: everything, including every route under `/-/keys` and bucket
+  create and delete.
+- **scoped**: a map from bucket name to `read` or `write`; `write`
+  includes `read`; the entry `*` applies to every bucket. Scoped keys
+  cannot manage keys or create and delete buckets.
+
+| Requires | Routes |
+|----------|--------|
+| nothing | health, version, and reads and listing on a public bucket |
+| `read` on the bucket | object GET and HEAD, object listing, bucket GET |
+| `write` on the bucket | object PUT and DELETE; upload initiate, part, query, complete, abort (checked against the session's bucket) |
+| any key | bucket list, filtered to the buckets the key can read; admin sees all |
+| admin | bucket create and delete; every `/-/keys` route |
+
+A key without the level answers `forbidden` before the bucket or object is
+looked up, so the response does not depend on whether the resource exists.
+Upload routes are the exception: the session is loaded first to learn its
+bucket, so an unknown session is `upload_not_found` for everyone and a
+known one is `forbidden` for a key without `write` on its bucket. The
+vector file `vectors/authorization.json` is the authority on the rule.
+
+A presigned URL carries its signing key's scope, which the signature has
+already narrowed to one method and one path.
+
 ## 4. Control plane
 
 All under `/-/`. A path that exists but not for the request's method answers
@@ -140,11 +168,11 @@ answers `unknown_route`. Both use the JSON error body from section 9.
 | `PUT /-/uploads/{id}/parts/{n}` | Upload part `n` | key or presigned |
 | `POST /-/uploads/{id}/complete` | Complete the session | key or presigned |
 | `DELETE /-/uploads/{id}` | Abort the session | key or presigned |
-| `/-/keys...` | Key management | decided with the authorization model |
+| `/-/keys...` | Key management (section 4.2) | admin |
 
 "key" in the Auth column means credentials are required; a request without
-any answers `unauthenticated`. "key or presigned" means either form. Until the
-authorization model is decided, every enabled key may do everything.
+any answers `unauthenticated`. "key or presigned" means either form. What a
+key may do is section 3.6.
 
 ### 4.1 Buckets
 
@@ -167,6 +195,36 @@ field of the wrong type is `invalid_parameter` with `details.name` naming
 the field (stage 4); a taken name on create is `bucket_exists` and an
 unknown name on get or delete is `bucket_not_found` (stage 6). Deleting a
 bucket that still holds objects or active uploads is `bucket_not_empty`.
+
+### 4.2 Keys [ADR-0008]
+
+A key record on the wire:
+
+```json
+{ "id": "tk_1f2e3d4c5b6a7988", "name": "web-prod", "admin": false,
+  "scopes": { "photos": "write", "public-site": "read" },
+  "disabled": false, "created_at": 1788912000 }
+```
+
+`secret` appears in exactly two responses, create and rotate, and nowhere
+else. `scopes` is omitted when `admin` is true.
+
+| Request | Body | Response |
+|---------|------|----------|
+| `POST /-/keys` | `{"name", "admin", "scopes"}`; `name` required, 1 to 128 bytes; `admin` defaults false; `scopes` required unless admin, and forbidden with it | `201` with the record plus `secret` |
+| `GET /-/keys` | none | `200 {"keys": [record, ...]}` ordered by id |
+| `GET /-/keys/{id}` | none | `200` record |
+| `PATCH /-/keys/{id}` | any of `{"name", "admin", "scopes", "disabled"}` | `200` updated record. Absent fields are left alone; the merged record must satisfy the rules above, so making a scoped key admin sends `"scopes": {}` in the same patch |
+| `POST /-/keys/{id}/rotate` | none | `200` record plus a new `secret`; the old one stops verifying at once |
+| `DELETE /-/keys/{id}` | none | `204` |
+
+Every route requires an admin key; a scoped key answers `forbidden`. An
+unknown id is `key_not_found`. A scope value other than `read` or `write`,
+a scope key that is not a valid bucket name or `*`, or `admin: true`
+together with `scopes` is `invalid_parameter` with `details.name`. The
+server does not prevent an admin from disabling, rotating or deleting its
+own key or the last admin; the bootstrap variable
+(`docs/configuration.md`) is the recovery path.
 
 ## 5. Objects
 

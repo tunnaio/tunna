@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tunnaio/tunna/spec/vectors/authorization.schema.json",
+  "title": "tunna authorization vectors",
+  "description": "Oracle for the stage-3 rule (ADR-0008): given a key's admin flag and scopes, a required level and a bucket, is the request allowed. Every implementation of the rule, server or SDK-side prediction, must agree with every case.",
+  "type": "object",
+  "required": ["spec", "rule", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "spec": { "type": "string" },
+    "rule": { "type": "string" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "key", "level", "bucket", "allowed"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "key": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "admin": { "type": "boolean" },
+              "scopes": { "type": "object", "additionalProperties": { "type": "string", "enum": ["read", "write"] } }
+            }
+          },
+          "level": { "type": "string", "enum": ["read", "write"] },
+          "bucket": { "type": "string" },
+          "allowed": { "type": "boolean" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}
