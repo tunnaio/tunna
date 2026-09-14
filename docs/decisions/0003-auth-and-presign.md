@@ -281,6 +281,13 @@ To revisit:
   environment. No wire change.
 - Asymmetric keys as an additional key *type*, if a multi-tenant or delegated
   scenario ever needs "the server cannot sign as you". Not expected.
+- A bearer form (the secret itself in a header) as a convenience scheme for
+  header-form requests only, never for presign. Raised 2026-09-14 after the
+  first manual probe needed a signer to hit `/-/keys`. Deferred until an SDK
+  exists to show whether the friction is real; Option B's objections still
+  hold, so if it comes back it is documented as the weaker of two doors, not
+  as an alternative. A `cmd/tunna-sign` helper covers the curl case without
+  touching the wire.
 
 ## Follow-ups this decision creates
 
