@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # The race detector needs cgo and a C toolchain, which the Linux runner
+      # has and the maintainer's Windows machine does not. This is the one
+      # place the memory stores' locking is checked mechanically.
+      - name: go test (race)
+        if: runner.os == 'Linux'
+        run: go test -race ./...
+
+      # Windows runs without the race detector but exercises the
+      # platform-specific code paths: share-delete opens, fsync through a
+      # read-write handle, CRLF-free sources.
+      - name: go test
+        if: runner.os == 'Windows'
+        run: go test ./...
+
+      - name: spec files parse
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          for f in $(find spec -name '*.json'); do
+            python3 -c "import json,sys; json.load(open(sys.argv[1], encoding='utf-8'))" "$f" || { echo "invalid JSON: $f"; exit 1; }
+          done
+          echo "all spec JSON parses"
+
+  benchmarks-compile:
+    name: benchmark module compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: docs/benchmarks/sqlite-driver/go.mod
+          cache: true
+      - name: vet the driver benchmark module
+        working-directory: docs/benchmarks/sqlite-driver
+        run: go vet ./...
