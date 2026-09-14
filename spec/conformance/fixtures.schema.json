@@ -15,6 +15,20 @@
     "spec": {
       "type": "string"
     },
+    "server": {
+      "type": "object",
+      "description": "Server configuration the runner must apply before any case runs. Cases assume exactly this configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "cors_origins": {
+          "type": "array",
+          "description": "TUNNA_CORS_ORIGINS as a list (ADR-0009).",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "keys": {
       "type": "object",
       "description": "Fixture name → API key. Secrets here are test-only.",

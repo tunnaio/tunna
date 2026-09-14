@@ -1,0 +1,474 @@
+{
+  "spec": "0.1.0-draft",
+  "cases": [
+    {
+      "name": "cors-preflight-allowed-origin",
+      "description": "A preflight from an allowed origin is answered from configuration with the echoed origin, the full method list, the requested headers echoed back, a max-age, and a Vary that names every input the answer depends on. No credentials are needed or sent.",
+      "decision": "ADR-0009",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://app.example.test",
+              "Access-Control-Request-Method": "PUT",
+              "Access-Control-Request-Headers": "authorization, x-tunna-date, x-tunna-checksum, content-type"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "body_empty": true,
+            "headers": {
+              "Access-Control-Allow-Origin": "https://app.example.test",
+              "Access-Control-Allow-Methods": "GET, HEAD, PUT, POST, PATCH, DELETE",
+              "Access-Control-Allow-Headers": "authorization, x-tunna-date, x-tunna-checksum, content-type",
+              "Access-Control-Max-Age": "86400",
+              "Vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cors-preflight-wildcard-label",
+      "decision": "ADR-0009",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://site.pages.example.test",
+              "Access-Control-Request-Method": "GET"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "headers": {
+              "Access-Control-Allow-Origin": "https://site.pages.example.test",
+              "Access-Control-Allow-Headers": {
+                "present": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cors-preflight-unmatched-origin",
+      "description": "Not a 403: a plain 204 with no CORS headers; the browser refuses on its own. The wildcard entry matches one label, so an apex, a two-label host and a look-alike host all fail.",
+      "decision": "ADR-0009",
+      "fixtures": [],
+      "steps": [
+        {
+          "name": "look-alike",
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://evil-pages.example.test",
+              "Access-Control-Request-Method": "PUT"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "present": false
+              },
+              "Access-Control-Allow-Methods": {
+                "present": false
+              },
+              "Vary": {
+                "present": false
+              }
+            }
+          }
+        },
+        {
+          "name": "apex",
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://pages.example.test",
+              "Access-Control-Request-Method": "PUT"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "present": false
+              }
+            }
+          }
+        },
+        {
+          "name": "two-labels",
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://a.b.pages.example.test",
+              "Access-Control-Request-Method": "PUT"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "present": false
+              }
+            }
+          }
+        },
+        {
+          "name": "wrong-scheme",
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "http://app.example.test",
+              "Access-Control-Request-Method": "PUT"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "present": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cors-preflight-is-stage-zero",
+      "description": "Preflight is answered before routing and before authentication: a control-plane path with no credentials gets 204, not unauthenticated, and a path no route serves gets 204, not unknown_route.",
+      "decision": "ADR-0009",
+      "fixtures": [],
+      "steps": [
+        {
+          "name": "control-plane",
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "-",
+              "keys"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://app.example.test",
+              "Access-Control-Request-Method": "DELETE",
+              "Access-Control-Request-Headers": "authorization, x-tunna-date"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "headers": {
+              "Access-Control-Allow-Origin": "https://app.example.test"
+            }
+          }
+        },
+        {
+          "name": "unrouted-path",
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "-",
+              "nothing",
+              "here"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://app.example.test",
+              "Access-Control-Request-Method": "GET"
+            }
+          },
+          "expect": {
+            "status": 204,
+            "headers": {
+              "Access-Control-Allow-Origin": "https://app.example.test"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cors-options-without-preflight-headers-is-not-preflight",
+      "description": "OPTIONS is only a preflight with both Origin and Access-Control-Request-Method. Anything else falls through to the router, which has no OPTIONS route: a known path answers method_not_allowed like any other wrong method, an unknown path answers unknown_route.",
+      "decision": "ADR-0009",
+      "fixtures": [],
+      "steps": [
+        {
+          "name": "origin-only-known-path",
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://app.example.test"
+            }
+          },
+          "expect": {
+            "error": "method_not_allowed",
+            "headers": {
+              "Access-Control-Allow-Origin": "https://app.example.test"
+            }
+          }
+        },
+        {
+          "name": "no-origin-known-path",
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none",
+            "headers": {
+              "Access-Control-Request-Method": "PUT"
+            }
+          },
+          "expect": {
+            "error": "method_not_allowed",
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "present": false
+              }
+            }
+          }
+        },
+        {
+          "name": "origin-only-unknown-path",
+          "request": {
+            "method": "OPTIONS",
+            "path": [
+              "-",
+              "nothing"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://app.example.test"
+            }
+          },
+          "expect": {
+            "error": "unknown_route"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cors-response-carries-origin-and-vary",
+      "description": "A real request from an allowed origin gets the origin echoed, every response header exposed, and Vary: Origin so a cache never serves it to another origin.",
+      "decision": "ADR-0009",
+      "fixtures": [
+        "public-site"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "public-site",
+              "index.html"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://app.example.test"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "Access-Control-Allow-Origin": "https://app.example.test",
+              "Access-Control-Expose-Headers": "*",
+              "Vary": "Origin"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cors-signed-request-carries-origin",
+      "decision": "ADR-0009",
+      "fixtures": [
+        "alice"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "buckets"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "headers": {
+              "Origin": "https://app.example.test"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "Access-Control-Allow-Origin": "https://app.example.test",
+              "Vary": "Origin"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cors-error-responses-carry-origin",
+      "description": "Errors are readable by an allowed page too, so a browser client can show the error body rather than a blank network failure.",
+      "decision": "ADR-0009",
+      "fixtures": [
+        "photos"
+      ],
+      "steps": [
+        {
+          "name": "unauthenticated",
+          "request": {
+            "method": "GET",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://app.example.test"
+            }
+          },
+          "expect": {
+            "error": "unauthenticated",
+            "headers": {
+              "Access-Control-Allow-Origin": "https://app.example.test",
+              "Vary": "Origin"
+            }
+          }
+        },
+        {
+          "name": "unknown-route",
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "nothing"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://app.example.test"
+            }
+          },
+          "expect": {
+            "error": "unknown_route",
+            "headers": {
+              "Access-Control-Allow-Origin": "https://app.example.test"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cors-no-origin-no-headers",
+      "decision": "ADR-0009",
+      "fixtures": [
+        "public-site"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "public-site",
+              "index.html"
+            ],
+            "auth": "none"
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "present": false
+              },
+              "Access-Control-Expose-Headers": {
+                "present": false
+              },
+              "Vary": {
+                "present": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cors-unmatched-origin-is-a-normal-response",
+      "description": "The request is served as if there were no Origin; only the CORS headers are withheld.",
+      "decision": "ADR-0009",
+      "fixtures": [
+        "public-site"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "GET",
+            "path": [
+              "public-site",
+              "index.html"
+            ],
+            "auth": "none",
+            "headers": {
+              "Origin": "https://evil.example.test"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "present": false
+              },
+              "Vary": {
+                "present": false
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -13,6 +13,7 @@ required, and the server refuses to start without it.
 | `TUNNA_ADDR` | `:8000` | Listen address, `host:port`. An empty host means every interface. |
 | `TUNNA_DATA_DIR` | required | Directory for the metadata database and object files. Created if absent. |
 | `TUNNA_BOOTSTRAP_KEY` | none | `<id>:<secret>`. At startup the key is inserted, or updated and re-enabled if it exists. See below. |
+| `TUNNA_CORS_ORIGINS` | none | Comma-separated browser origins allowed by CORS: exact (`https://app.example.com`), one-label wildcard (`https://*.example.com`), or `*`. Empty means no CORS headers at all. See below. |
 
 ## Bootstrap key
 
@@ -35,3 +36,30 @@ keys through `POST /-/keys`, then remove the variable.
 - Remove the variable once a managed admin key exists. A secret in a process
   environment is readable by anything that can inspect the process, which
   is acceptable for bootstrap and wrong as a permanent arrangement.
+
+## CORS origins
+
+`TUNNA_CORS_ORIGINS` is one list for the whole server (ADR-0009). It is
+not a security boundary: every request carries an explicit signature or a
+presigned query and a browser attaches nothing on its own, so the list
+only decides which pages a browser lets read the responses, and keeps
+caches from serving one origin's answer to another.
+
+- Entries are separated by commas; surrounding whitespace and empty
+  entries are ignored, so a trailing comma is harmless.
+- Each entry is `*`, an exact origin `scheme://host[:port]`, or a pattern
+  `scheme://*.domain[:port]` whose `*` stands for exactly one DNS label.
+  `https://*.example.com` allows `https://app.example.com` and not
+  `https://example.com` or `https://a.b.example.com`.
+- Scheme is `http` or `https`. Entries are lowercased and a default port
+  is dropped, which is how browsers send `Origin`; `https://App.Example.com:443`
+  and `https://app.example.com` are the same entry.
+- A value that is not one of those shapes, a path, a wildcard anywhere but
+  the leftmost label, a bare `https://*`, is a startup error naming the
+  variable. The whole variable is refused, so a typo cannot silently drop
+  one origin.
+- The effective list is logged at startup.
+- Local development against a dev server on another port needs the page's
+  origin with its port, for example `http://localhost:5173`. A page served
+  over `https` may call an `http://localhost` origin; browsers exempt it
+  from mixed-content blocking.

@@ -26,6 +26,7 @@ type Options struct {
 	PartSizeMax   int64
 	MaxParts      int64
 	UploadTTL     time.Duration
+	CORSOrigins   tunna.Origins // allowed browser origins; the zero value turns CORS off
 }
 
 // handler carries the dependencies the route methods need.
@@ -44,10 +45,12 @@ type handler struct {
 	partSizeMax   int64
 	maxParts      int64
 	uploadTTL     time.Duration
+	origins       tunna.Origins
 }
 
 // New builds the HTTP handler for the server: the routes, wrapped in the
-// authentication stage. Defaults from Options are applied here.
+// authentication stage, wrapped in CORS (stage 0, outermost, so preflights
+// never meet authentication). Defaults from Options are applied here.
 func New(o Options) http.Handler {
 	if o.Now == nil {
 		o.Now = time.Now
@@ -87,6 +90,7 @@ func New(o Options) http.Handler {
 		partSizeMax:   o.PartSizeMax,
 		maxParts:      o.MaxParts,
 		uploadTTL:     o.UploadTTL,
+		origins:       o.CORSOrigins,
 	}
 
 	mux.HandleFunc("GET /-/health", h.health)
@@ -99,11 +103,11 @@ func New(o Options) http.Handler {
 	mux.HandleFunc("DELETE /-/buckets/{bucket}", chain(h.deleteBucket, requireAuth, requireAdmin))
 
 	// uploads routes
-	mux.HandleFunc("POST /-/uploads", requireAuth(h.createUpload))
-	mux.HandleFunc("PUT /-/uploads/{id}/parts/{n}", requireAuth(h.putUploadPart))
-	mux.HandleFunc("GET /-/uploads/{id}", requireAuth(h.getUpload))
-	mux.HandleFunc("DELETE /-/uploads/{id}", requireAuth(h.deleteUpload))
-	mux.HandleFunc("POST /-/uploads/{id}/complete", requireAuth(h.completeUpload))
+	mux.HandleFunc("POST /-/uploads", chain(h.createUpload, requireAuth))
+	mux.HandleFunc("PUT /-/uploads/{id}/parts/{n}", chain(h.putUploadPart, requireAuth))
+	mux.HandleFunc("GET /-/uploads/{id}", chain(h.getUpload, requireAuth))
+	mux.HandleFunc("DELETE /-/uploads/{id}", chain(h.deleteUpload, requireAuth))
+	mux.HandleFunc("POST /-/uploads/{id}/complete", chain(h.completeUpload, requireAuth))
 
 	// object routes
 	mux.HandleFunc("PUT /{bucket}/{key...}", chain(h.putObject, reserved, requireAuth, requireAccess(tunna.Write)))
@@ -121,7 +125,7 @@ func New(o Options) http.Handler {
 
 	mux.HandleFunc("/", h.notFound)
 
-	return h.authenticate(mux)
+	return h.cors(h.authenticate(mux))
 }
 
 // middleware is one rule of the ladder (ADR-0004) wrapped around a handler.
@@ -137,9 +141,6 @@ func chain(h http.HandlerFunc, ms ...middleware) http.HandlerFunc {
 	return h
 }
 
-// reserved is stage 1's routing rule: "/-/" is the control plane, so an
-// object path whose bucket segment is "-" is an unknown route, answered
-// before authentication as the ladder requires.
 // reserved is stage 1's routing rule: "/-/" is the control plane, so an
 // object path whose bucket segment is "-" is an unknown route, answered
 // before authentication as the ladder requires. The mux cannot express this
@@ -177,9 +178,6 @@ func (h *handler) version(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// counts reports whether a matched pattern proves the request path exists.
-// The catch-all proves nothing, and under the reserved prefix neither does
-// the object wildcard: "-" is a legal bucket segment to the mux but not to us.
 // counts reports whether a matched pattern proves the request path exists.
 // The catch-all proves nothing, and under the reserved prefix neither does
 // the object wildcard: "-" is a legal bucket segment to the mux but not to us.

@@ -4,6 +4,7 @@ import (
 	"go/build"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,8 @@ import (
 // are those under the module path; everything else must be standard library.
 //
 //   - root (tunna): no module imports; no stdlib I/O (os, net, database/sql,
-//     syscall, log, io/fs). io, context, time, errors are types and allowed.
+//     syscall, log, io/fs). io, context, time, errors are types and allowed;
+//     net/url is allowed by name, being parsing rather than I/O.
 //   - sig: no module imports; standard library only; no net/http.
 //   - internal/<adapter>: may import the root and sig; never another adapter.
 //     Third-party imports are allowed only where listed in adapterDeps: the
@@ -30,10 +32,13 @@ var adapterDeps = map[string][]string{
 type rule struct {
 	allowModule    []string // module import paths allowed, exact
 	forbidPrefixes []string // stdlib prefixes forbidden
+	allowExact     []string // stdlib paths allowed even under a forbidden prefix
 }
 
 var rules = map[string]rule{
-	".":   {forbidPrefixes: []string{"os", "net", "database/sql", "syscall", "log", "io/fs"}},
+	// net/url is string parsing with no I/O; the CORS origin matcher (ADR-0009)
+	// needs it and it is the one thing under net/ the root may see.
+	".":   {forbidPrefixes: []string{"os", "net", "database/sql", "syscall", "log", "io/fs"}, allowExact: []string{"net/url"}},
 	"sig": {forbidPrefixes: []string{"os", "net/http", "database/sql", "syscall", "log"}},
 }
 
@@ -79,6 +84,9 @@ func checkImports(t *testing.T, dir string, imports []string) {
 				t.Errorf("%s imports %q: must not import from the module", rel, imp)
 			}
 			for _, bad := range r.forbidPrefixes {
+				if slices.Contains(r.allowExact, imp) {
+					break
+				}
 				if imp == bad || strings.HasPrefix(imp, bad+"/") {
 					t.Errorf("%s imports %q, forbidden by ADR-0005 (matches %q)", rel, imp, bad)
 				}

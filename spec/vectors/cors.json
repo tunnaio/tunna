@@ -1,0 +1,45 @@
+{
+  "spec": "0.1.0-draft",
+  "description": "Origin matching for CORS (ADR-0009). 'allow' is the configured list before normalisation; 'origin' is the Origin header a browser sends. A matching case gives the Access-Control-Allow-Origin value to answer with: the origin itself, or '*' when the list holds '*'. An 'invalid' case is a configured list the server must refuse at startup.",
+  "cases": [
+    { "name": "exact-match", "allow": ["https://app.example.com"], "origin": "https://app.example.com", "match": true, "value": "https://app.example.com" },
+    { "name": "exact-other-host", "allow": ["https://app.example.com"], "origin": "https://evil.example.com", "match": false },
+    { "name": "exact-scheme-matters", "allow": ["https://app.example.com"], "origin": "http://app.example.com", "match": false },
+    { "name": "exact-no-prefix-match", "allow": ["https://app.example.com"], "origin": "https://app.example.com.evil.test", "match": false },
+    { "name": "exact-no-suffix-match", "allow": ["https://app.example.com"], "origin": "https://evil-app.example.com", "match": false },
+    { "name": "config-host-is-lowercased", "allow": ["https://App.Example.COM"], "origin": "https://app.example.com", "match": true, "value": "https://app.example.com", "reason": "browsers send lowercase; the configured value is normalised, not the request" },
+    { "name": "config-default-https-port-dropped", "allow": ["https://app.example.com:443"], "origin": "https://app.example.com", "match": true, "value": "https://app.example.com" },
+    { "name": "config-default-http-port-dropped", "allow": ["http://app.example.com:80"], "origin": "http://app.example.com", "match": true, "value": "http://app.example.com" },
+    { "name": "explicit-port-must-match", "allow": ["https://app.example.com"], "origin": "https://app.example.com:8443", "match": false },
+    { "name": "explicit-port-matches", "allow": ["http://localhost:5173"], "origin": "http://localhost:5173", "match": true, "value": "http://localhost:5173" },
+    { "name": "explicit-port-other-port", "allow": ["http://localhost:5173"], "origin": "http://localhost:3000", "match": false },
+    { "name": "config-trailing-slash-is-invalid", "allow": ["https://app.example.com/"], "invalid": true, "reason": "an origin has no path; a value with one is a mistake, not a pattern" },
+
+    { "name": "wildcard-one-label", "allow": ["https://*.example.com"], "origin": "https://app.example.com", "match": true, "value": "https://app.example.com" },
+    { "name": "wildcard-not-the-apex", "allow": ["https://*.example.com"], "origin": "https://example.com", "match": false, "reason": "* stands for exactly one label; zero labels is not a match" },
+    { "name": "wildcard-not-two-labels", "allow": ["https://*.example.com"], "origin": "https://a.b.example.com", "match": false, "reason": "* never crosses a dot" },
+    { "name": "wildcard-not-a-suffix-trick", "allow": ["https://*.example.com"], "origin": "https://evil-example.com", "match": false, "reason": "the dot before the domain is part of the pattern" },
+    { "name": "wildcard-scheme-matters", "allow": ["https://*.example.com"], "origin": "http://app.example.com", "match": false },
+    { "name": "wildcard-with-port", "allow": ["http://*.localhost:3000"], "origin": "http://app.localhost:3000", "match": true, "value": "http://app.localhost:3000" },
+    { "name": "wildcard-port-mismatch", "allow": ["http://*.localhost:3000"], "origin": "http://app.localhost", "match": false },
+    { "name": "wildcard-label-case-insensitive", "allow": ["https://*.example.com"], "origin": "https://APP.example.com", "match": true, "value": "https://APP.example.com", "reason": "hosts are case-insensitive; the echoed value is the request's, byte for byte" },
+
+    { "name": "star-matches-anything", "allow": ["*"], "origin": "https://whatever.test", "match": true, "value": "*" },
+    { "name": "star-matches-null-origin", "allow": ["*"], "origin": "null", "match": true, "value": "*", "reason": "a sandboxed frame or a file: page sends the literal null; only * lets it through" },
+    { "name": "null-never-matches-a-pattern", "allow": ["https://app.example.com", "https://*.example.com"], "origin": "null", "match": false },
+    { "name": "star-anywhere-in-list-answers-star", "allow": ["https://app.example.com", "*"], "origin": "https://app.example.com", "match": true, "value": "*", "reason": "one answer for everyone; no Vary needed" },
+    { "name": "any-entry-may-match", "allow": ["https://one.example.com", "https://*.example.org", "http://localhost:5173"], "origin": "https://two.example.org", "match": true, "value": "https://two.example.org" },
+    { "name": "empty-list-matches-nothing", "allow": [], "origin": "https://app.example.com", "match": false },
+    { "name": "empty-origin-matches-nothing", "allow": ["*"], "origin": "", "match": false, "reason": "no Origin header is not a CORS request; a runtime must not reach the matcher with one, and the matcher says no anyway" },
+
+    { "name": "invalid-no-scheme", "allow": ["app.example.com"], "invalid": true },
+    { "name": "invalid-scheme", "allow": ["ftp://app.example.com"], "invalid": true, "reason": "only http and https are browser origins" },
+    { "name": "invalid-wildcard-inside-label", "allow": ["https://app*.example.com"], "invalid": true },
+    { "name": "invalid-wildcard-not-leftmost", "allow": ["https://app.*.com"], "invalid": true },
+    { "name": "invalid-wildcard-whole-host", "allow": ["https://*"], "invalid": true, "reason": "would match every https origin; spell that * if it is meant" },
+    { "name": "invalid-wildcard-two-labels", "allow": ["https://*.*.example.com"], "invalid": true },
+    { "name": "invalid-userinfo", "allow": ["https://user@app.example.com"], "invalid": true },
+    { "name": "invalid-query", "allow": ["https://app.example.com?x=1"], "invalid": true },
+    { "name": "invalid-one-bad-entry-fails-the-list", "allow": ["https://app.example.com", "nope"], "invalid": true, "reason": "startup refuses the whole variable so a typo cannot silently drop one origin" }
+  ]
+}

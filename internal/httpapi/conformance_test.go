@@ -104,6 +104,9 @@ type errorTable struct {
 }
 
 type fixtures struct {
+	Server struct {
+		CORSOrigins []string `json:"cors_origins"`
+	} `json:"server"`
 	Keys map[string]struct {
 		ID       string            `json:"id"`
 		Secret   string            `json:"secret"`
@@ -279,8 +282,13 @@ func newServer(t *testing.T, fx fixtures) *httptest.Server {
 		keys = append(keys, key)
 	}
 	objects := memory.NewObjectStore(fixtureObjects(t, fx, blobs, now))
+	origins, err := tunna.ParseOrigins(fx.Server.CORSOrigins)
+	if err != nil {
+		t.Fatalf("fixtures server.cors_origins: %v", err)
+	}
 	return httptest.NewServer(httpapi.New(httpapi.Options{
 		ServerVersion: "test",
+		CORSOrigins:   origins,
 		Keys:          memory.NewKeyStore(keys),
 		Buckets:       memory.NewBucketStore(fixtureBuckets(fx, now)),
 		Objects:       objects,

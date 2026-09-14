@@ -45,6 +45,9 @@ Every request passes through six stages. The first stage that fails answers.
 Each error code in [`errors.json`](errors.json) belongs to exactly one stage.
 A request with faults at several stages receives the earliest stage's error.
 
+One thing runs before stage 1: a CORS preflight (section 10.2), which is
+answered from configuration and never reaches the ladder.
+
 ## 3. Authentication [ADR-0003]
 
 ### 3.1 API keys
@@ -463,16 +466,77 @@ error table entry, such as `server_time` on `clock_skew`.
 Every 401 response carries `WWW-Authenticate: TUNNA1-HMAC-SHA256`, as HTTP
 requires.
 
-## 10. CORS
+## 10. CORS [ADR-0009]
 
-Rules carried from platform facts:
+CORS is one server-wide allowlist of origins (`docs/configuration.md`,
+`TUNNA_CORS_ORIGINS`). It is not a security boundary: every request
+carries an explicit signature or presigned query, and a browser attaches
+nothing on its own, so an origin list restricts nothing a non-browser
+client could not already do. It exists to let the right pages through and
+to keep caches honest. When the list is empty, no CORS header is ever
+written. The bucket record has no CORS field; one is reserved for a later
+per-bucket narrowing and its absence means the server-wide list.
 
-- A response that echoes an origin in `Access-Control-Allow-Origin` carries
-  `Vary: Origin`.
-- An allowed-origin pattern's wildcard stands for exactly one DNS label,
-  anchored, never crossing a dot.
-- CORS configuration is per bucket. Its shape is decided with the bucket
-  settings.
+### 10.1 Origins
+
+An entry is `*`, an exact origin `scheme://host[:port]`, or a pattern
+`scheme://*.domain[:port]` whose `*` stands for exactly one DNS label.
+Scheme is `http` or `https`. Entries are normalised at startup: lowercase,
+and a default port (`:80` for http, `:443` for https) dropped, because
+that is how browsers send `Origin`. Anything else, a path, userinfo, a
+query, a wildcard elsewhere than the leftmost label, is a startup error.
+
+A request origin matches an exact entry byte for byte after the host is
+compared case-insensitively, and matches a pattern when the scheme and port
+agree, the host ends with `.` plus the pattern's domain, and exactly one
+label precedes that suffix. `https://*.example.com` matches
+`https://app.example.com` and not `https://example.com`,
+`https://a.b.example.com` or `https://evil-example.com`. The literal
+origin `null` matches only `*`. If the list holds `*`, every origin
+matches and the answer is the literal `*`.
+[`vectors/cors.json`](vectors/cors.json) is the definition.
+
+### 10.2 Preflight (stage 0)
+
+A request is a preflight when the method is `OPTIONS` and both `Origin`
+and `Access-Control-Request-Method` are present. It is answered before
+stage 1 of section 2, from configuration alone, so it needs no credentials,
+consults no store, and does not depend on whether the path is routed.
+
+| Origin | Response |
+|--------|----------|
+| matches | `204`, empty body, with the headers below |
+| does not match, or CORS is off | `204`, empty body, no CORS headers, no `Vary` |
+
+| Header | Value |
+|--------|-------|
+| `Access-Control-Allow-Origin` | the request's `Origin`, or `*` |
+| `Access-Control-Allow-Methods` | `GET, HEAD, PUT, POST, PATCH, DELETE`, the union of every route, regardless of path |
+| `Access-Control-Allow-Headers` | the request's `Access-Control-Request-Headers`, echoed verbatim; absent when the request had none |
+| `Access-Control-Max-Age` | `86400` |
+| `Vary` | `Origin, Access-Control-Request-Method, Access-Control-Request-Headers` |
+
+The header list is echoed rather than `*` because `*` is defined not to
+cover `Authorization`, which every signed request carries. An `OPTIONS`
+that is not a preflight falls through to the router, which has no `OPTIONS`
+route: `method_not_allowed` on a known path, `unknown_route` on an unknown
+one, with the CORS response headers of 10.3 when the origin matches.
+
+### 10.3 Responses
+
+Every response to a request carrying an `Origin` that matches, on every
+route and including error responses:
+
+| Header | Value |
+|--------|-------|
+| `Access-Control-Allow-Origin` | the request's `Origin`, or `*` |
+| `Access-Control-Expose-Headers` | `*`; valid because the server never uses credentialed mode, and it exposes `ETag`, `X-Tunna-Checksum`, `Content-Range` and every `X-Tunna-Meta-*` without a list to maintain |
+| `Vary` | `Origin`; omitted when the value is `*`, which is the same for everyone |
+
+A request with no `Origin`, an origin that does not match, or CORS off gets
+the same response with none of these headers. A non-matching origin is not
+an error: the request may be a valid non-browser call, and the browser
+refuses on its own.
 
 ## 11. Limits
 
@@ -493,8 +557,4 @@ Every configurable value is logged at startup.
 
 ## Open items in this document
 
-- Checksum scheme (section 8).
-- Authorization model: what a key may do, per bucket; public buckets; key
-  management endpoints.
-- Bucket settings shape (CORS, public flag).
 - Whether small-object PUT returns the same metadata shape as complete.

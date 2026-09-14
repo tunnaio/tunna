@@ -1,5 +1,11 @@
 {
   "spec": "0.1.0-draft",
+  "server": {
+    "cors_origins": [
+      "https://app.example.test",
+      "https://*.pages.example.test"
+    ]
+  },
   "keys": {
     "alice": {
       "id": "tk_alice",

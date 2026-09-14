@@ -131,7 +131,7 @@ tunna/
 
 | Package | Provides | May import (module) | May import (stdlib I/O) | Must not |
 |---------|----------|---------------------|-------------------------|----------|
-| `tunna` (root) | Domain types (`Bucket`, `Object`, `UploadSession`, `APIKey`, part set), naming and size rules, error kinds, the interfaces the core needs (`ObjectStore`, `UploadStore`, `KeyStore`, `BlobStore`, a clock), and the use cases that orchestrate them | nothing | none: no `os`, `net`, `net/http`, `database/sql`. `io` and `context` are types, not I/O, and are allowed | Import anything in the module |
+| `tunna` (root) | Domain types (`Bucket`, `Object`, `UploadSession`, `APIKey`, part set), naming and size rules, error kinds, the interfaces the core needs (`ObjectStore`, `UploadStore`, `KeyStore`, `BlobStore`, a clock), and the use cases that orchestrate them | nothing | none: no `os`, `net`, `net/http`, `database/sql`. `io` and `context` are types, not I/O, and are allowed; `net/url` is string parsing and is allowed by name for the CORS origin matcher (ADR-0009) | Import anything in the module |
 | `sig` | Canonical string, HMAC-SHA256 sign and verify, presign build and parse | nothing | none | Import `tunna`. It is a leaf so a Go SDK can take it alone |
 | `internal/sqlite` | Implements the store interfaces; owns the schema, embedded migrations, the writer goroutine and group commit | `tunna` | `database/sql`, the driver | Import other adapters |
 | `internal/disk` | Implements `BlobStore` on a directory: create by id, write at offset, sync, open for read, delete | `tunna` | `os`, `io` | Import other adapters |

@@ -7,12 +7,15 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+
+	"github.com/tunnaio/tunna"
 )
 
 const (
 	envAddr         = "TUNNA_ADDR"
 	envDataDir      = "TUNNA_DATA_DIR"
 	envBootstrapKey = "TUNNA_BOOTSTRAP_KEY"
+	envCorsOrigins  = "TUNNA_CORS_ORIGINS"
 )
 
 // Config is the effective configuration after defaults and validation.
@@ -22,6 +25,7 @@ type Config struct {
 	BootstrapKeyID string
 	// Secret should never appear in any logs
 	BootstrapKeySecret string
+	CORSOrigins        tunna.Origins
 }
 
 // Load reads the environment. An unset or empty variable takes its default;
@@ -34,6 +38,23 @@ func Load() (Config, error) {
 
 	if cfg.DataDir == "" {
 		return Config{}, fmt.Errorf("%s is required", envDataDir)
+	}
+
+	corsOrigins := os.Getenv(envCorsOrigins)
+	if corsOrigins != "" {
+		var entries []string
+		for e := range strings.SplitSeq(corsOrigins, ",") {
+			trimmed := strings.TrimSpace(e)
+			if trimmed == "" {
+				continue
+			}
+			entries = append(entries, trimmed)
+		}
+		origins, err := tunna.ParseOrigins(entries)
+		if err != nil {
+			return Config{}, fmt.Errorf("%s: %w", envCorsOrigins, err)
+		}
+		cfg.CORSOrigins = origins
 	}
 
 	bootstrapKey := os.Getenv(envBootstrapKey)
@@ -52,7 +73,7 @@ func Load() (Config, error) {
 // LogValues records the effective configuration at startup. Container tools
 // forward only the variables they are told to; this line shows what arrived.
 func (c Config) LogValues(logger *slog.Logger) {
-	logger.Info("config", "addr", c.Addr, "data_dir", c.DataDir, "bootstrap_key_id", c.BootstrapKeyID)
+	logger.Info("config", "addr", c.Addr, "data_dir", c.DataDir, "bootstrap_key_id", c.BootstrapKeyID, "cors_origins", c.CORSOrigins)
 }
 
 func envOr(key, fallback string) string {
