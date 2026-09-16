@@ -1,9 +1,10 @@
 name: publish sdk/typescript
 
-# A tag sdk/typescript/v<version> publishes that version to npm with
+# A tag sdk/typescript/v<version> stages that version on npm with
 # provenance, authenticated by npm trusted publishing (OIDC), so no token
-# exists anywhere (ADR-0011). The maintainer creates the tag; nothing here
-# bumps or tags.
+# exists anywhere (ADR-0011). The maintainer creates the tag, and approves
+# the staged version on npmjs.com with 2FA; nothing here bumps, tags or
+# makes a version public.
 
 on:
   push:
@@ -31,11 +32,14 @@ jobs:
         with:
           bun-version: latest
 
-      # npm 11.5 or later does trusted publishing; Node 24 ships it.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+
+      # Staged publishing (npm stage) is newer than the npm Node 24 ships.
+      - name: current npm
+        run: npm install -g npm@latest && npm --version
 
       - name: the tag names the version in package.json
         run: |
@@ -65,8 +69,9 @@ jobs:
           bun test
           bun run smoke
 
-      - name: npm publish
-        run: npm publish --provenance --access public --tag "$DIST_TAG"
+      # Staged, not published: the maintainer approves it on npmjs.com.
+      - name: npm stage publish
+        run: npm stage publish --provenance --access public --tag "$DIST_TAG"
 
       - name: github release
         working-directory: .
@@ -76,3 +81,4 @@ jobs:
           prerelease=""
           case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" --title "sdk/typescript $VERSION" --generate-notes $prerelease
+          echo "staged on npm as tunna@$VERSION; approve it at https://www.npmjs.com/package/tunna/access" >> "$GITHUB_STEP_SUMMARY"

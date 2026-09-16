@@ -48,16 +48,21 @@ the registry, which trusted publishing needs before it can be configured.
 **Cons:** the token is a standing credential that any workflow in the
 repository, or anyone who can edit one, can exfiltrate. Rejected.
 
-### Option C: CI publish on a tag with npm trusted publishing
+### Option C: CI stages on a tag with npm trusted publishing; the maintainer approves
 
 The workflow authenticates to npm with a short-lived OpenID Connect token
 GitHub mints for that run; npm is configured to trust that repository and
-workflow file for the package. No token exists to leak. `npm publish
---provenance` attaches the attestation. This is npm's recommended path.
+workflow file for the package. No token exists to leak. `npm stage
+publish --provenance` builds and attests the version and parks it on the
+registry unpublished; the maintainer approves it on npmjs.com with 2FA,
+which is when it becomes installable. npm recommends exactly this and
+marks direct publishing from CI as not recommended (seen on the
+trusted-publisher form, 2026-09-16).
 
 **Pros:** no standing credential; provenance for every publish; the
 artefact is built from the tag by CI, the same steps every push already
-runs.
+runs; a human with 2FA is the last gate before anything is public, which
+is the project's release rule made mechanical.
 
 **Cons:** trusted publishing must be configured on npm after the package
 exists, so one manual publish precedes it. A one-time step.
@@ -73,9 +78,13 @@ project rule forbids. Rejected for now; revisit when a second SDK exists.
 ## Trade-off analysis
 
 **Prereleases while the spec is draft.** The SDK publishes as
-`0.1.0-alpha.N` under the npm dist-tag `alpha`. `npm install tunna`
-resolves to `latest`, which does not exist until `0.1.0`, so nobody gets
-a draft client by accident; `npm install tunna@alpha` gets it on purpose.
+`0.1.0-alpha.N` under the npm dist-tag `alpha`. The first publish
+showed a registry rule this record first got wrong: npm always has a
+`latest` and sets it on the first publish whatever `--tag` says, and it
+cannot be removed, so `npm install tunna` does resolve to the newest
+alpha until `0.1.0` exists. The `alpha` tag is still the honest name to
+install by, and the README says so; the version string itself carries
+the warning.
 `0.1.0` is published when the spec drops `-draft`, and from then on the
 SDK's version is its own and says nothing about the spec version, which
 `SPEC_VERSION` carries.
@@ -110,7 +119,8 @@ files under the package. No source, no tests, no spec.
 
 A release is: bump the version in `package.json`, commit as
 `sdk/typescript <version>`, tag `sdk/typescript/v<version>` on that
-commit, push the tag. The maintainer does all four.
+commit, push the tag, then approve the staged version on npmjs.com. The
+maintainer does all five.
 
 ### The workflow
 
@@ -121,14 +131,18 @@ commit, push the tag. The maintainer does all four.
 2. Verify the tag's version equals `package.json`'s; fail otherwise.
 3. `bun install --frozen-lockfile`, `bun run check`, `bun test`,
    `bun run smoke` (which builds).
-4. `npm publish --provenance --access public`, with `--tag alpha` when the
-   version has a prerelease suffix, authenticated by OIDC (`id-token:
-   write` permission, no secret).
-5. Create a GitHub release for the tag with generated notes.
+4. `npm stage publish --provenance --access public`, with `--tag alpha`
+   when the version has a prerelease suffix, authenticated by OIDC
+   (`id-token: write` permission, no secret). Needs a current npm; the
+   workflow installs `npm@latest` since the one Node ships lags.
+5. Create a GitHub release for the tag with generated notes, and point
+   at the staged version in the run summary.
+6. The maintainer approves the staged version on npmjs.com under the
+   package's settings, with 2FA. Until then it is not installable.
 
 ### package.json
 
-`publishConfig` with `access: public` and `provenance: true`;
+`publishConfig` with `access: public` (provenance is the workflow's flag, since a manual publish has no provider to attest);
 `prepublishOnly` running check, test and build so a manual publish cannot
 skip them; `files` stays `["dist"]`; a `LICENSE` copy in the package
 directory.
@@ -138,15 +152,17 @@ directory.
 By the maintainer, from a clean checkout of the tagged commit, with
 `npm login` and 2FA: `npm publish --tag alpha`. Then on npmjs.com, under
 the package's settings, add a trusted publisher: repository
-`tunnaio/tunna`, workflow `publish-typescript.yml`. From the second
-version on, the tag alone publishes.
+`tunnaio/tunna`, workflow `publish-typescript.yml`, direct publishing
+left off. From the second version on, the tag stages and the approval
+publishes.
 
 ## Consequences
 
 Easier:
 
-- A publish is a tag; the artefact is built by CI from that commit, with
-  provenance anyone can verify with `npm audit signatures`.
+- A publish is a tag plus one approval; the artefact is built by CI from
+  that commit, with provenance anyone can verify with `npm audit
+  signatures`, and nothing becomes public without a person and 2FA.
 - No publish credential exists anywhere after the first release.
 - The same pattern serves the Rust SDK (crates.io supports trusted
   publishing too) and the server (a release workflow on `v*`).
@@ -170,5 +186,6 @@ To revisit:
 2. [x] `package.json`: `publishConfig`, `prepublishOnly`, version
        `0.1.0-alpha.1`; `LICENSE` copied into the package directory, 2026-09-16.
 3. [x] `.github/workflows/publish-typescript.yml`, 2026-09-16.
-4. [ ] First publish by the maintainer; trusted publisher configured on npm.
+4. [x] First publish by the maintainer, 2026-09-16 (`tunna@0.1.0-alpha.1`);
+       trusted publisher configured on npm the same day, staged-only.
 5. [x] `sdk/typescript/README.md` install line; project notes, 2026-09-16.

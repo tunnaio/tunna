@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/tunnaio/tunna.git",
+    "url": "git+https://github.com/tunnaio/tunna.git",
     "directory": "sdk/typescript"
   },
   "type": "module",
@@ -73,8 +73,7 @@
     }
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown",
