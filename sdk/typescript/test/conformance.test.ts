@@ -77,9 +77,11 @@ function unsupported(c: Case): string | undefined {
 
 let server: FixtureServer;
 
+// Building the Go binary on a cold cache takes longer than Bun's 5 s hook
+// default, so the hook carries its own timeout.
 beforeAll(async () => {
   server = await FixtureServer.start();
-});
+}, 120_000);
 
 afterAll(() => {
   server?.stop();

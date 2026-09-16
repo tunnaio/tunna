@@ -92,6 +92,12 @@ jobs:
       - name: type check
         run: bun run check
 
+      # Warm the Go build cache so the conformance test's own build of
+      # cmd/tunna-fixtures is fast; the test builds into a temp dir itself.
+      - name: warm the fixture server build
+        working-directory: .
+        run: go build -o /dev/null ./cmd/tunna-fixtures
+
       - name: bun test
         run: bun test
 

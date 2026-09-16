@@ -52,7 +52,7 @@ export interface ObjectListOptions {
   limit?: number;
 }
 
-export interface ParsedHeaders {
+export interface ObjectInfo {
   size: number;
   contentType: string;
   etag: string;
@@ -61,7 +61,7 @@ export interface ParsedHeaders {
   metadata: Record<string, string>;
 }
 
-function parseHeaders(headers: Headers): ParsedHeaders {
+function parseHeaders(headers: Headers): ObjectInfo {
   const contentRange = headers.get("Content-Range");
   const size = contentRange
     ? Number(contentRange.slice(contentRange.lastIndexOf("/") + 1))
@@ -199,7 +199,7 @@ export class Objects {
     };
   }
 
-  async head(bucket: string, key: string): Promise<ParsedHeaders> {
+  async head(bucket: string, key: string): Promise<ObjectInfo> {
     const headers: Record<string, string> = {};
     const res = await this.#client.request({
       method: "HEAD",

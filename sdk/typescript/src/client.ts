@@ -1,3 +1,4 @@
+import { ApiKeys } from "./api-keys.ts";
 import { Buckets } from "./buckets.ts";
 import { encodePath, encodeQuery } from "./encode.ts";
 import { isErrorCode } from "./errors.generated.ts";
@@ -34,6 +35,7 @@ export interface TunnaOptions {
 
 export class Tunna {
   readonly buckets: Buckets;
+  readonly apiKeys: ApiKeys;
 
   readonly #base: string;
   readonly #key: Key | undefined;
@@ -46,6 +48,7 @@ export class Tunna {
     this.#fetch = options.fetch ?? defaultFetch.bind(globalThis);
     this.#now = options.now ?? defaultNow;
     this.buckets = new Buckets(this);
+    this.apiKeys = new ApiKeys(this);
   }
 
   /** @internal */

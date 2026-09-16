@@ -13,4 +13,22 @@ export type { Key, Request, Mode } from "./sign.ts";
 export { Tunna } from "./client.ts";
 export type { TunnaOptions } from "./client.ts";
 export { TunnaError, TransportError } from "./errors.ts";
-export type { BucketRecord as Bucket } from "./buckets.ts";
+export type { BucketRecord } from "./buckets.ts";
+export { withSecret } from "./api-keys.ts";
+export type {
+  Access,
+  ApiKey,
+  AdminApiKey,
+  ScopedApiKey,
+  ApiKeyCreateOptions,
+  ApiKeyPatchOptions,
+  WithSecret,
+} from "./api-keys.ts";
+export type {
+  ObjectRecord,
+  ObjectInfo,
+  ObjectResponse,
+  ObjectPutOptions,
+  ObjectGetOptions,
+  ObjectListOptions,
+} from "./objects.ts";
