@@ -1,34 +1,76 @@
 # tunna
 
-Object storage server in Go, with SDKs to follow. *Tunna* is Swedish for
-barrel.
+[![ci](https://github.com/tunnaio/tunna/actions/workflows/ci.yml/badge.svg)](https://github.com/tunnaio/tunna/actions/workflows/ci.yml)
 
-**Status:** early. Design is settled and written down; the server is being
-built. Nothing here is usable yet.
+A small, fast object storage server in Go, with a wire contract written as
+data and SDKs tested against it. *Tunna* is Swedish for barrel.
 
-## Goals
+**Status: pre-release.** The server implements the whole contract (spec
+`0.1.0-draft`): buckets, objects, multipart uploads, signed and presigned
+requests, scoped API keys, CORS. The TypeScript SDK covers every route. No
+release has been cut and the wire may still change before `0.1.0`; the
+`-draft` suffix comes off at the first release.
 
-- Fast. Single static binary, one data directory, no second process to run.
-- One wire contract, specified as data, that the server and every SDK are
-  tested against.
+## What it is
+
+- **One binary, one directory.** Objects on disk, metadata in an embedded
+  SQLite database, nothing else to run.
+- **Signed requests.** HMAC-SHA256 over a canonical request, in header form
+  and as presigned URLs; keys are admin or scoped per bucket.
+- **Uploads built for concurrency.** Numbered parts of a fixed size written
+  at offset into one file, completed by count, with per-part checksums that
+  fold into the object's. The SDK sends parts in parallel.
+- **A contract you can test against.** Vectors for encoding, signing,
+  checksums, authorization and CORS, and a conformance suite the server and
+  every SDK replay from the same files.
+
+## Run it
+
+```
+go build ./cmd/tunna
+TUNNA_DATA_DIR=./data TUNNA_BOOTSTRAP_KEY=tk_admin:change-me ./tunna
+```
+
+The server listens on `:8000` by default. `GET /-/health` needs no key;
+everything else is signed. The bootstrap key is an admin key; use it to
+create managed keys through `POST /-/keys`, then drop the variable. All
+variables are in [`docs/configuration.md`](docs/configuration.md).
+
+Signing by hand is not practical, which is the point; use an SDK, or the
+`sig` package for Go. The TypeScript client:
+
+```ts
+import { Tunna } from "tunna";
+const tunna = new Tunna({ url: "http://localhost:8000", key: { id, secret } });
+await tunna.buckets.create("photos");
+await tunna.objects.put("photos", "a.jpg", bytes, { contentType: "image/jpeg" });
+```
+
+See [`sdk/typescript`](sdk/typescript/README.md) for the rest.
 
 ## Layout
 
 | Path | What |
 |------|------|
-| `docs/decisions/` | Architecture decision records. Every non-obvious choice, with the alternative it beat. |
-| `spec/` | The wire contract, error table, signing and encoding vectors, and conformance cases. |
-| `sig/`, `internal/`, `cmd/tunna` | The server. See ADR-0005 for the package layout. |
-| `cmd/tunna-fixtures` | The API in the conformance fixture state, with `POST /reset`, for SDK conformance runners (ADR-0010). |
-| `cmd/tunna-load` | Load generator; see `docs/benchmarks/`. |
-| `sdk/typescript` | The TypeScript client: browser and Node, no dependencies, conformance-tested against the same cases as the server. |
-| `sdk/` | Client SDKs, one directory per language. |
+| [`spec/`](spec/README.md) | The wire contract, error table, vectors, and conformance cases. Start here. |
+| [`docs/decisions/`](docs/decisions/) | Architecture decision records: every non-obvious choice, with the alternative it beat. |
+| [`docs/configuration.md`](docs/configuration.md), [`docs/schema.md`](docs/schema.md) | Environment variables; the SQLite schema and its migrations. |
+| [`docs/benchmarks/`](docs/benchmarks/) | Measurements and how they were taken. |
+| `sig/`, `internal/`, `cmd/tunna` | The server. ADR-0005 describes the package layout. |
+| `cmd/tunna-fixtures` | The API in the conformance fixture state, for SDK conformance runners. |
+| `cmd/tunna-load` | Load generator. |
+| [`sdk/typescript`](sdk/typescript/README.md) | The TypeScript client: browser and Node, no dependencies. |
 
-## Reading order
+## Develop
 
-1. [`spec/README.md`](spec/README.md) for how the spec is versioned and used.
-2. [`spec/wire.md`](spec/wire.md) for the contract itself.
-3. [`docs/decisions/`](docs/decisions/) for why it looks the way it does.
+Go 1.27 and, for the SDK, [Bun](https://bun.sh). `go test ./...` runs the
+server's tests including the conformance suite; `bun test` in
+`sdk/typescript` runs the SDK's, spawning the fixture server. CI runs both,
+with the race detector on Linux.
+
+The project is also a learning project for its maintainer, which shapes how
+it is run: see [`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports go
+through [`SECURITY.md`](SECURITY.md).
 
 ## License
 
