@@ -3,16 +3,16 @@
 Thanks for looking. A few things about how this project is run, so that
 your time is well spent.
 
-## What this project is
+## Before a feature
 
-tunna is built by one maintainer, and it is deliberately also a learning
-project: the server is the maintainer's first Go, and each SDK is a bounded
-project in its own language. That has one consequence for contributions:
-**feature code is generally written by the maintainer.** Pull requests that
-implement a feature may be declined, with thanks, even when they are good,
-because writing it is the point.
+Every non-obvious choice has a record in `docs/decisions/` with the
+alternatives it beat. A change to the wire contract or the design starts
+as an issue naming the record it touches, or proposing a new one; the
+implementation comes after the decision, and a spec change lands with its
+vectors or conformance cases before any server or SDK code. Opening the
+issue first avoids a pull request that argues with a settled decision.
 
-What is welcome, and where a pull request will be taken seriously:
+## What is welcome
 
 - **Bug reports with a reproduction.** Best of all is a failing conformance
   case or vector: a JSON entry in `spec/` that the server or an SDK gets
@@ -21,18 +21,10 @@ What is welcome, and where a pull request will be taken seriously:
   contradicts the prose, an error code with no case pinning it.
 - **Documentation fixes** and anything that makes the decision records
   clearer.
-- **A new SDK in a language that has none**, if you want to own it. Open an
-  issue first so the layout and the conformance setup are agreed.
+- **A new SDK in a language that has none.** Open an issue first so the
+  layout and the conformance setup are agreed; `sdk/typescript` is the
+  reference for both.
 - **Security reports**, through [`SECURITY.md`](SECURITY.md).
-
-## How things are decided
-
-Every non-obvious choice has a record in `docs/decisions/` with the
-alternatives it beat. If you disagree with a decision, the record is the
-place to argue with; an issue that says which record and what changed is
-the way to open it. A change to the wire contract needs a spec change,
-vectors or cases for it, and a record if it is a design change, before any
-implementation.
 
 ## Rules the repository enforces
 

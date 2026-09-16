@@ -68,9 +68,9 @@ server's tests including the conformance suite; `bun test` in
 `sdk/typescript` runs the SDK's, spawning the fixture server. CI runs both,
 with the race detector on Linux.
 
-The project is also a learning project for its maintainer, which shapes how
-it is run: see [`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports go
-through [`SECURITY.md`](SECURITY.md).
+How changes are proposed and what is welcome is in
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports go through
+[`SECURITY.md`](SECURITY.md).
 
 ## License
 
