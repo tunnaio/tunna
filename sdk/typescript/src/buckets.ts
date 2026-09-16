@@ -1,18 +1,18 @@
 import type { Tunna } from "./client.ts";
 
-interface BucketRecord {
+interface WireBucket {
   name: string;
   public: boolean;
   created_at: number;
 }
 
-export interface Bucket {
+export interface BucketRecord {
   name: string;
   public: boolean;
   createdAt: Date;
 }
 
-function toBucket(b: BucketRecord): Bucket {
+function toBucket(b: WireBucket): BucketRecord {
   return {
     name: b.name,
     public: b.public,
@@ -27,16 +27,16 @@ export class Buckets {
     this.#client = client;
   }
 
-  async list(): Promise<Bucket[]> {
+  async list(): Promise<BucketRecord[]> {
     const res = await this.#client.request({
       method: "GET",
       path: ["-", "buckets"],
     });
-    const body: { buckets: BucketRecord[] } = await res.json();
+    const body: { buckets: WireBucket[] } = await res.json();
     return body.buckets.map(toBucket);
   }
 
-  async get(name: string): Promise<Bucket> {
+  async get(name: string): Promise<BucketRecord> {
     const res = await this.#client.request({
       method: "GET",
       path: ["-", "buckets", name],
@@ -44,7 +44,10 @@ export class Buckets {
     return toBucket(await res.json());
   }
 
-  async create(name: string, options?: { public?: boolean }): Promise<Bucket> {
+  async create(
+    name: string,
+    options?: { public?: boolean },
+  ): Promise<BucketRecord> {
     const res = await this.#client.request({
       method: "PUT",
       path: ["-", "buckets", name],

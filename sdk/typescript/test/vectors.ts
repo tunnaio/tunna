@@ -22,7 +22,7 @@ export type Input = { text?: string; hex?: string; bytes?: { seed: number; lengt
  * i of the stream for seed s is byte (i mod 32) of SHA-256 over the 16-byte
  * big-endian concatenation of s and floor(i / 32).
  */
-export function generate(seed: number, length: number): Uint8Array {
+export function generate(seed: number, length: number): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(length);
   const block = new Uint8Array(16);
   const view = new DataView(block.buffer);

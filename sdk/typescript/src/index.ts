@@ -13,4 +13,4 @@ export type { Key, Request, Mode } from "./sign.ts";
 export { Tunna } from "./client.ts";
 export type { TunnaOptions } from "./client.ts";
 export { TunnaError, TransportError } from "./errors.ts";
-export type { Bucket } from "./buckets.ts";
+export type { BucketRecord as Bucket } from "./buckets.ts";

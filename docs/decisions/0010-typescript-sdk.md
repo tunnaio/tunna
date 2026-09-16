@@ -289,5 +289,8 @@ To revisit:
        81 fail against the stubs, Node smoke scripts, CI job.
 5. [x] `encode`, `sign`, `crc32c`, 2026-09-15: 89 of 89 vector tests, Node
        smoke green in both formats.
-6. [ ] The client, then the conformance test, then `upload`.
+6. [ ] The client, then the conformance test, then `upload`. Client core,
+       buckets and objects 2026-09-15/16; conformance test 2026-09-16, all
+       108 cases replayed through the SDK signer against cmd/tunna-fixtures;
+       keys, uploads and `upload` still open.
 7. [ ] README for the package; the repo README's SDK table gains a row.

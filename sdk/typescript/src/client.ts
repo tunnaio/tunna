@@ -1,10 +1,13 @@
 import { Buckets } from "./buckets.ts";
 import { encodePath, encodeQuery } from "./encode.ts";
-import { isErrorCode, type ErrorCode } from "./errors.generated.ts";
+import { isErrorCode } from "./errors.generated.ts";
 import { TransportError, TunnaError } from "./errors.ts";
 import { authorization, HEADER_DATE, type Key } from "./sign.ts";
 
-type Fetch = typeof fetch;
+type Fetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
 type Now = () => number;
 
 function defaultNow() {
@@ -38,7 +41,7 @@ export class Tunna {
   readonly #fetch: Fetch;
 
   constructor(options: TunnaOptions) {
-    this.#base = options.url;
+    this.#base = options.url.replace(/\/+$/, "");
     this.#key = options.key;
     this.#fetch = options.fetch ?? defaultFetch.bind(globalThis);
     this.#now = options.now ?? defaultNow;

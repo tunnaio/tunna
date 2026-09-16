@@ -6,8 +6,11 @@ or later with no dependencies; the code uses `fetch`, `crypto.subtle` and
 `ReadableStream` and nothing else. ESM and CommonJS from one source
 (ADR-0010).
 
-Status: in progress. The primitives (`encode`, `sign`, `crc32c`) come
-first, tested against the spec's vector files; the client after.
+Status: in progress. The primitives (`encode`, `sign`, `crc32c`) pass the
+spec's vector files; the client has buckets and objects; keys, uploads and
+the `upload` helper are next. Every conformance case in `spec/conformance`
+is replayed through this package's encoder and signer against
+`cmd/tunna-fixtures`, so `bun test` needs Go on the path.
 
 ## Develop
 
@@ -34,7 +37,7 @@ bun run smoke            # build, then plain Node imports both formats
 | `src/crc32c.ts` | CRC-32C, combine, and the `crc32c=` wire form (`spec/vectors/crc32c.json`). |
 | `src/errors.generated.ts` | `ErrorCode`, status and stage tables, `SPEC_VERSION`. Generated. |
 | `src/index.ts` | Public surface. |
-| `test/` | `bun test` files, one per vector file, plus the two plain-Node smoke scripts. |
+| `test/` | `bun test` files: one per vector file, the client pipeline with an injected fetch, the conformance runner, and the two plain-Node smoke scripts. |
 | `scripts/gen-errors.ts` | The generator. |
 
 Subpath exports `tunna/sign`, `tunna/encode` and `tunna/crc32c` give the
