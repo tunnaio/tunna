@@ -7,7 +7,12 @@ from one source (ADR-0010). Every route in the wire contract is covered,
 and every conformance case in `spec/conformance` is replayed through this
 package's encoder and signer.
 
-Not yet published to npm.
+```
+npm install tunna@alpha
+```
+
+Prereleases publish under the `alpha` tag while the wire contract is a
+draft; `0.1.0` follows the first stable spec (ADR-0011).
 
 ## Use
 

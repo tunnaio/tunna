@@ -1,0 +1,78 @@
+name: publish sdk/typescript
+
+# A tag sdk/typescript/v<version> publishes that version to npm with
+# provenance, authenticated by npm trusted publishing (OIDC), so no token
+# exists anywhere (ADR-0011). The maintainer creates the tag; nothing here
+# bumps or tags.
+
+on:
+  push:
+    tags: ["sdk/typescript/v*"]
+
+permissions:
+  contents: write   # the GitHub release
+  id-token: write   # the OIDC token npm trusts
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # npm 11.5 or later does trusted publishing; Node 24 ships it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: the tag names the version in package.json
+        run: |
+          tag="${GITHUB_REF_NAME#sdk/typescript/v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "tag is $tag but package.json says $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          case "$version" in
+            *-*) echo "DIST_TAG=alpha" >> "$GITHUB_ENV" ;;
+            *)   echo "DIST_TAG=latest" >> "$GITHUB_ENV" ;;
+          esac
+
+      - name: bun install
+        run: bun install --frozen-lockfile
+
+      - name: generated files are current
+        run: |
+          bun run gen
+          git diff --exit-code -- src/errors.generated.ts
+
+      - name: check, test, build, smoke
+        run: |
+          bun run check
+          bun test
+          bun run smoke
+
+      - name: npm publish
+        run: npm publish --provenance --access public --tag "$DIST_TAG"
+
+      - name: github release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --title "sdk/typescript $VERSION" --generate-notes $prerelease

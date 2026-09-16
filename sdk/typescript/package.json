@@ -1,8 +1,19 @@
 {
   "name": "tunna",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "Client for the tunna object store: signer, presigned URLs, concurrent uploads. Browser and Node, no dependencies.",
+  "keywords": [
+    "object-storage",
+    "s3",
+    "tunna",
+    "upload",
+    "presigned-url"
+  ],
   "license": "MIT",
+  "homepage": "https://github.com/tunnaio/tunna/tree/main/sdk/typescript#readme",
+  "bugs": {
+    "url": "https://github.com/tunnaio/tunna/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/tunnaio/tunna.git",
@@ -61,12 +72,17 @@
       }
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsdown",
     "check": "tsc --noEmit",
     "test": "bun test",
     "gen": "bun run scripts/gen-errors.ts",
-    "smoke": "bun run build && node test/node-smoke.mjs && node test/node-smoke.cjs"
+    "smoke": "bun run build && node test/node-smoke.mjs && node test/node-smoke.cjs",
+    "prepublishOnly": "bun run check && bun test && bun run build"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",

@@ -1,0 +1,174 @@
+# ADR-0011: Release tags and npm publishing
+
+**Status:** Accepted
+**Date:** 2026-09-16
+**Deciders:** maintainer
+
+## Context
+
+The TypeScript SDK covers the whole wire contract and is ready to be
+installed by someone other than its author. Nothing has been released:
+the repository has no tags, the npm name `tunna` is free (checked
+2026-09-16), and the spec is `0.1.0-draft`, which its README defines as
+"the contract is being written and nothing is stable".
+
+This record decides how anything in this repository gets a version and
+gets published, starting with the npm package, so the first release does
+not set a precedent by accident.
+
+Forces:
+
+- **Only the maintainer runs releases** (project rule). A pushed tag may
+  deploy, so tags are a human act.
+- **One repository, several release lines.** The server, each SDK and the
+  spec version independently (project notes). Tags must say which.
+- **A draft spec.** Publishing `0.1.0` of a client for a contract that
+  may still change would promise stability the spec disclaims.
+- **Supply chain.** npm packages are a common attack surface. A publish
+  should carry provenance, an attestation linking the artefact to the
+  commit and workflow that built it, and there should be no long-lived
+  publish token on a laptop or in a secret.
+- **Small toolchain** (ADR-0010). No release framework for one package.
+
+## Options considered
+
+### Option A: Manual `npm publish` from the maintainer's machine
+
+**Pros:** nothing to set up; 2FA on the account guards it.
+
+**Cons:** no provenance; the build that ships is whatever was on the
+machine, not the committed tree; a laptop is the weakest place to hold a
+publish credential. Acceptable exactly once, to create the package on
+the registry, which trusted publishing needs before it can be configured.
+
+### Option B: CI publish on a tag with a long-lived npm token in a secret
+
+**Pros:** builds from the committed tree; provenance possible.
+
+**Cons:** the token is a standing credential that any workflow in the
+repository, or anyone who can edit one, can exfiltrate. Rejected.
+
+### Option C: CI publish on a tag with npm trusted publishing
+
+The workflow authenticates to npm with a short-lived OpenID Connect token
+GitHub mints for that run; npm is configured to trust that repository and
+workflow file for the package. No token exists to leak. `npm publish
+--provenance` attaches the attestation. This is npm's recommended path.
+
+**Pros:** no standing credential; provenance for every publish; the
+artefact is built from the tag by CI, the same steps every push already
+runs.
+
+**Cons:** trusted publishing must be configured on npm after the package
+exists, so one manual publish precedes it. A one-time step.
+
+### Option D: A release framework (changesets, release-please, semantic-release)
+
+**Pros:** changelogs, version bumps and tags automated.
+
+**Cons:** a dependency and a convention for one package with one
+maintainer, and it takes the tag out of the maintainer's hands, which the
+project rule forbids. Rejected for now; revisit when a second SDK exists.
+
+## Trade-off analysis
+
+**Prereleases while the spec is draft.** The SDK publishes as
+`0.1.0-alpha.N` under the npm dist-tag `alpha`. `npm install tunna`
+resolves to `latest`, which does not exist until `0.1.0`, so nobody gets
+a draft client by accident; `npm install tunna@alpha` gets it on purpose.
+`0.1.0` is published when the spec drops `-draft`, and from then on the
+SDK's version is its own and says nothing about the spec version, which
+`SPEC_VERSION` carries.
+
+**Tags name their release line.** `v1.2.3` is the server. An SDK is
+`sdk/<language>/v1.2.3`, matching its directory; git allows the slashes.
+The workflow triggers on its own line's pattern only, and refuses if the
+version in `package.json` differs from the tag, so the tag is the single
+statement of what was released.
+
+**One manual publish, then never again.** Option A once, by the
+maintainer, with 2FA, to create the package; then trusted publishing is
+configured on npm for `.github/workflows/publish-typescript.yml`, and
+Option C handles every publish after. The manual one still runs the same
+`prepublishOnly` gate as CI.
+
+**What goes in the tarball.** `dist/` only, plus the package README and a
+copy of the MIT license in the package directory, since npm includes only
+files under the package. No source, no tests, no spec.
+
+## Decision
+
+**Option C, bootstrapped by one Option A publish.**
+
+### Versions and tags
+
+| Line | Tag | Version rule |
+|------|-----|--------------|
+| Server | `v<semver>` | Its own; first release when the spec drops `-draft` |
+| TypeScript SDK | `sdk/typescript/v<semver>` | `0.1.0-alpha.N` under dist-tag `alpha` while the spec is draft; `0.1.0` with the first stable spec; independent after |
+| Spec | none; `spec/VERSION` | ADR in `spec/README.md` |
+
+A release is: bump the version in `package.json`, commit as
+`sdk/typescript <version>`, tag `sdk/typescript/v<version>` on that
+commit, push the tag. The maintainer does all four.
+
+### The workflow
+
+`.github/workflows/publish-typescript.yml`, on push of tags matching
+`sdk/typescript/v*`:
+
+1. Check out; set up Go, Bun and Node.
+2. Verify the tag's version equals `package.json`'s; fail otherwise.
+3. `bun install --frozen-lockfile`, `bun run check`, `bun test`,
+   `bun run smoke` (which builds).
+4. `npm publish --provenance --access public`, with `--tag alpha` when the
+   version has a prerelease suffix, authenticated by OIDC (`id-token:
+   write` permission, no secret).
+5. Create a GitHub release for the tag with generated notes.
+
+### package.json
+
+`publishConfig` with `access: public` and `provenance: true`;
+`prepublishOnly` running check, test and build so a manual publish cannot
+skip them; `files` stays `["dist"]`; a `LICENSE` copy in the package
+directory.
+
+### First publish
+
+By the maintainer, from a clean checkout of the tagged commit, with
+`npm login` and 2FA: `npm publish --tag alpha`. Then on npmjs.com, under
+the package's settings, add a trusted publisher: repository
+`tunnaio/tunna`, workflow `publish-typescript.yml`. From the second
+version on, the tag alone publishes.
+
+## Consequences
+
+Easier:
+
+- A publish is a tag; the artefact is built by CI from that commit, with
+  provenance anyone can verify with `npm audit signatures`.
+- No publish credential exists anywhere after the first release.
+- The same pattern serves the Rust SDK (crates.io supports trusted
+  publishing too) and the server (a release workflow on `v*`).
+
+Harder:
+
+- Two tag namespaces to remember. The workflow's version check catches a
+  tag on the wrong commit.
+- Prerelease numbering is manual. Fine at this cadence.
+
+To revisit:
+
+- A changelog and a release framework (Option D) when a second SDK or a
+  second maintainer makes manual bumps error-prone.
+- Whether the server ships binaries through GitHub releases on `v*`,
+  which needs its own workflow and a decision on which platforms.
+
+## Action items
+
+1. [x] Maintainer accepted this record, 2026-09-16.
+2. [x] `package.json`: `publishConfig`, `prepublishOnly`, version
+       `0.1.0-alpha.1`; `LICENSE` copied into the package directory, 2026-09-16.
+3. [x] `.github/workflows/publish-typescript.yml`, 2026-09-16.
+4. [ ] First publish by the maintainer; trusted publisher configured on npm.
+5. [x] `sdk/typescript/README.md` install line; project notes, 2026-09-16.
