@@ -1,0 +1,16 @@
+# Versions are pinned exactly (project rule), so updates arrive as pull
+# requests here rather than by floating ranges. CI runs on each one.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /sdk/typescript
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

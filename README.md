@@ -69,7 +69,8 @@ server's tests including the conformance suite; `bun test` in
 with the race detector on Linux.
 
 How changes are proposed and what is welcome is in
-[`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports go through
+[`CONTRIBUTING.md`](CONTRIBUTING.md), under the
+[code of conduct](CODE_OF_CONDUCT.md). Security reports go through
 [`SECURITY.md`](SECURITY.md).
 
 ## License

@@ -12,6 +12,8 @@ implementation comes after the decision, and a spec change lands with its
 vectors or conformance cases before any server or SDK code. Opening the
 issue first avoids a pull request that argues with a settled decision.
 
+Everyone taking part is bound by the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## What is welcome
 
 - **Bug reports with a reproduction.** Best of all is a failing conformance
