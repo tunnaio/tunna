@@ -6,6 +6,7 @@ interface WireBucket {
   created_at: number;
 }
 
+/** A bucket as the server reports it. */
 export interface BucketRecord {
   name: string;
   public: boolean;
@@ -20,6 +21,7 @@ function toBucket(b: WireBucket): BucketRecord {
   };
 }
 
+/** The bucket routes (spec/wire.md 4.1). Create and delete need an admin key; list shows what the key may read. */
 export class Buckets {
   readonly #client: Tunna;
 
@@ -27,6 +29,7 @@ export class Buckets {
     this.#client = client;
   }
 
+  /** Every bucket the key may read, in name order. */
   async list(): Promise<BucketRecord[]> {
     const res = await this.#client.request({
       method: "GET",
@@ -36,6 +39,7 @@ export class Buckets {
     return body.buckets.map(toBucket);
   }
 
+  /** One bucket; bucket_not_found when there is none. */
   async get(name: string): Promise<BucketRecord> {
     const res = await this.#client.request({
       method: "GET",
@@ -44,6 +48,7 @@ export class Buckets {
     return toBucket(await res.json());
   }
 
+  /** Creates a bucket; bucket_exists when the name is taken. */
   async create(
     name: string,
     options?: { public?: boolean },
@@ -57,6 +62,7 @@ export class Buckets {
     return toBucket(await res.json());
   }
 
+  /** Deletes an empty bucket; bucket_not_empty while it holds objects or active uploads. */
   async delete(name: string): Promise<void> {
     await this.#client.request({
       method: "DELETE",

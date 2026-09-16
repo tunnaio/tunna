@@ -34,6 +34,7 @@ interface Call {
   body?: BodyInit | null;
 }
 
+/** Client options. Without a key the client is anonymous: public reads only. */
 export interface TunnaOptions {
   url: string;
   key?: Key;
@@ -41,6 +42,7 @@ export interface TunnaOptions {
   now?: Now;
 }
 
+/** Options for upload: part size (default 8 MiB), parts in flight (default 4), and a progress callback in bytes. */
 export interface UploadOptions {
   partSize?: number;
   concurrency?: number;
@@ -49,6 +51,7 @@ export interface UploadOptions {
   onProgress?: (sent: number, total: number) => void;
 }
 
+/** Options for presign; headers given here must be sent by whoever uses the URL. */
 export interface PresignOptions {
   method: "GET" | "HEAD" | "PUT" | "DELETE";
   bucket: string;
@@ -57,6 +60,7 @@ export interface PresignOptions {
   headers?: Record<string, string>;
 }
 
+/** A tunna client: one base URL and one key, with the routes grouped as buckets, objects, apiKeys and uploads. */
 export class Tunna {
   readonly objects: Objects;
   readonly buckets: Buckets;
@@ -79,6 +83,7 @@ export class Tunna {
     this.uploads = new Uploads(this);
   }
 
+  /** Uploads a Blob or byte array as concurrent numbered parts (ADR-0001) and returns the object; an empty source is a single PUT. */
   async upload(
     bucket: string,
     key: string,
@@ -162,6 +167,7 @@ export class Tunna {
     }
   }
 
+  /** A presigned URL for one request, valid for expiresIn seconds. The URL is a credential: do not log it. */
   async presign(options: PresignOptions): Promise<string> {
     if (!this.#key) {
       throw new TypeError("presign requires authentication");

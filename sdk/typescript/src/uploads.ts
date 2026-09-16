@@ -19,6 +19,7 @@ interface WireUploadPart {
   checksum: string;
 }
 
+/** An upload session; parts lists the received part numbers, [] from create. */
 export interface UploadSession {
   id: string;
   bucket: string;
@@ -30,12 +31,14 @@ export interface UploadSession {
   parts: number[];
 }
 
+/** The server's record of one received part. */
 export interface UploadPart {
   part: number;
   size: number;
   checksum: string;
 }
 
+/** Session options; partSize is fixed for the session and bounded by the server (default 5 MiB to 100 MiB). */
 export interface UploadCreateOptions {
   partSize: number;
   contentType?: string;
@@ -63,6 +66,7 @@ function toUploadPart(s: WireUploadPart): UploadPart {
   };
 }
 
+/** The raw upload routes (spec/wire.md 6, ADR-0001); tunna.upload drives them for you. */
 export class Uploads {
   readonly #client: Tunna;
 
@@ -70,6 +74,7 @@ export class Uploads {
     this.#client = client;
   }
 
+  /** Initiates a session for one key; it expires unless completed or aborted. */
   async create(
     bucket: string,
     key: string,
@@ -91,6 +96,7 @@ export class Uploads {
     return toUploadSession(body);
   }
 
+  /** Sends part n (from 1) with a signed checksum; parts may go in any order and a resend replaces. */
   async putPart(
     id: string,
     n: number,
@@ -108,6 +114,7 @@ export class Uploads {
     return toUploadPart(body);
   }
 
+  /** The session with its received parts; resume is get, then send what is missing. */
   async get(id: string): Promise<UploadSession> {
     const res = await this.#client.request({
       method: "GET",
@@ -117,6 +124,7 @@ export class Uploads {
     return toUploadSession(body);
   }
 
+  /** Completes by part count, optionally verifying each part's checksum; returns the object. */
   async complete(
     id: string,
     parts: number,
@@ -135,6 +143,7 @@ export class Uploads {
     return toObject(body);
   }
 
+  /** Discards the session and its bytes. */
   async abort(id: string): Promise<void> {
     await this.#client.request({
       method: "DELETE",

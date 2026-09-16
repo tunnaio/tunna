@@ -2,6 +2,7 @@ import type { Tunna } from "./client.ts";
 import { crc32c, encodeChecksum } from "./crc32c.ts";
 import { TransportError } from "./errors.ts";
 
+/** The object record as it is on the wire (spec/wire.md 5.3). */
 export interface WireObject {
   bucket: string;
   key: string;
@@ -17,6 +18,7 @@ interface WireListObjects {
   next?: string;
 }
 
+/** An object's metadata; metadata is {} when the object has none. */
 export interface ObjectRecord {
   bucket: string;
   key: string;
@@ -27,6 +29,7 @@ export interface ObjectRecord {
   metadata: Record<string, string>;
 }
 
+/** A GET result: the parsed headers, the body stream, and the Response for callers who want json() or arrayBuffer(). */
 export interface ObjectResponse {
   response: Response;
   body: ReadableStream<Uint8Array<ArrayBuffer>>;
@@ -38,20 +41,24 @@ export interface ObjectResponse {
   metadata: Record<string, string>;
 }
 
+/** Content type (default application/octet-stream) and user metadata for a PUT. */
 export interface ObjectPutOptions {
   contentType?: string;
   metadata?: Record<string, string>;
 }
 
+/** A byte range for GET: start inclusive, end inclusive when given. */
 export interface ObjectGetOptions {
   range?: { start: number; end?: number };
 }
 
+/** Listing filters: keys starting with prefix, pages of limit (server default 1000). */
 export interface ObjectListOptions {
   prefix?: string;
   limit?: number;
 }
 
+/** What a GET or HEAD reports in headers; size is the whole object's even for a range. */
 export interface ObjectInfo {
   size: number;
   contentType: string;
@@ -127,6 +134,7 @@ function computeChecksum(data: Uint8Array) {
   return encodeChecksum(crc32c(data));
 }
 
+/** The object routes (spec/wire.md 5 and 7). Reads on a public bucket need no key. */
 export class Objects {
   readonly #client: Tunna;
 
@@ -134,6 +142,7 @@ export class Objects {
     this.#client = client;
   }
 
+  /** Stores the body as one request with a signed CRC32C; a stream is refused, use upload for those. Replaces an existing key. */
   async put(
     bucket: string,
     key: string,
@@ -169,6 +178,7 @@ export class Objects {
     return toObject(record);
   }
 
+  /** Fetches an object, optionally a byte range; the body is a stream the caller consumes. */
   async get(
     bucket: string,
     key: string,
@@ -199,6 +209,7 @@ export class Objects {
     };
   }
 
+  /** The object's headers without its body. */
   async head(bucket: string, key: string): Promise<ObjectInfo> {
     const headers: Record<string, string> = {};
     const res = await this.#client.request({
@@ -210,6 +221,7 @@ export class Objects {
     return parseHeaders(res.headers);
   }
 
+  /** Deletes an object; object_not_found when there is none. */
   async delete(bucket: string, key: string): Promise<void> {
     await this.#client.request({
       method: "DELETE",
@@ -217,6 +229,7 @@ export class Objects {
     });
   }
 
+  /** Iterates every object in key order, following pages; use with for await. */
   async *list(
     bucket: string,
     options?: ObjectListOptions,

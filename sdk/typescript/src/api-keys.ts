@@ -1,5 +1,6 @@
 import type { Tunna } from "./client.ts";
 
+/** What a scoped key may do in a bucket; write includes read (ADR-0008). */
 export type Access = "read" | "write";
 
 interface WireApiKey {
@@ -11,6 +12,7 @@ interface WireApiKey {
   created_at: number;
 }
 
+/** An admin key: every route, every bucket, no scopes. */
 export interface AdminApiKey {
   id: string;
   name: string;
@@ -19,6 +21,7 @@ export interface AdminApiKey {
   createdAt: Date;
 }
 
+/** A scoped key: access per bucket name, or "*" for every bucket. */
 export interface ScopedApiKey {
   id: string;
   name: string;
@@ -28,8 +31,10 @@ export interface ScopedApiKey {
   createdAt: Date;
 }
 
+/** A key record; narrow on admin to reach scopes. Never carries the secret. */
 export type ApiKey = AdminApiKey | ScopedApiKey;
 
+/** A new key: admin, or scoped with at least one scope; the two are exclusive by type. */
 export type ApiKeyCreateOptions =
   | {
       name: string;
@@ -41,10 +46,12 @@ export type ApiKeyCreateOptions =
       scopes: Record<string, Access>;
     };
 
+/** Fields to change; only those given are sent. Making a scoped key admin must send scopes: {} in the same patch. */
 export type ApiKeyPatchOptions = Partial<
   ApiKeyCreateOptions & { disabled: boolean }
 >;
 
+/** A record plus its secret, which the server shows only on create and rotate. */
 export type WithSecret<T> = T & { secret: string };
 
 function toApiKey(k: WireApiKey): ApiKey {
@@ -78,6 +85,7 @@ export async function withSecret(res: Response): Promise<WithSecret<ApiKey>> {
   };
 }
 
+/** The key management routes (spec/wire.md 4.2); every one needs an admin key. */
 export class ApiKeys {
   readonly #client: Tunna;
 
@@ -85,6 +93,7 @@ export class ApiKeys {
     this.#client = client;
   }
 
+  /** Every key, by id. */
   async list(): Promise<ApiKey[]> {
     const res = await this.#client.request({
       method: "GET",
@@ -94,6 +103,7 @@ export class ApiKeys {
     return body.keys.map(toApiKey);
   }
 
+  /** One key; key_not_found when there is none. */
   async get(id: string): Promise<ApiKey> {
     const res = await this.#client.request({
       method: "GET",
@@ -103,6 +113,7 @@ export class ApiKeys {
     return toApiKey(body);
   }
 
+  /** Creates a key; the returned secret is shown this once. */
   async create(options: ApiKeyCreateOptions): Promise<WithSecret<ApiKey>> {
     const res = await this.#client.request({
       method: "POST",
@@ -113,6 +124,7 @@ export class ApiKeys {
     return withSecret(res);
   }
 
+  /** Changes the given fields; takes effect on the key's next request. */
   async patch(id: string, options: ApiKeyPatchOptions): Promise<ApiKey> {
     const res = await this.#client.request({
       method: "PATCH",
@@ -124,6 +136,7 @@ export class ApiKeys {
     return toApiKey(body);
   }
 
+  /** Replaces the secret; the old one stops verifying at once, presigned URLs included. */
   async rotate(id: string): Promise<WithSecret<ApiKey>> {
     const res = await this.#client.request({
       method: "POST",
@@ -132,6 +145,7 @@ export class ApiKeys {
     return withSecret(res);
   }
 
+  /** Deletes a key. The server does not stop you deleting your own or the last admin. */
   async delete(id: string): Promise<void> {
     await this.#client.request({
       method: "DELETE",

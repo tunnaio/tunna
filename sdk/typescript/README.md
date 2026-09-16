@@ -1,24 +1,84 @@
 # tunna (TypeScript)
 
-Client for the [tunna](../../README.md) object store: the request signer,
-presigned URLs, and a concurrent uploader. Runs in browsers and in Node 20
-or later with no dependencies; the code uses `fetch`, `crypto.subtle` and
-`ReadableStream` and nothing else. ESM and CommonJS from one source
-(ADR-0010).
+Client for the [tunna](../../README.md) object store. Runs in browsers and
+in Node 20 or later with no dependencies: the code uses `fetch`,
+`crypto.subtle` and `ReadableStream` and nothing else. ESM and CommonJS
+from one source (ADR-0010). Every route in the wire contract is covered,
+and every conformance case in `spec/conformance` is replayed through this
+package's encoder and signer.
 
-Status: in progress. The primitives (`encode`, `sign`, `crc32c`) pass the
-spec's vector files; the client has buckets and objects; keys, uploads and
-the `upload` helper are next. Every conformance case in `spec/conformance`
-is replayed through this package's encoder and signer against
-`cmd/tunna-fixtures`, so `bun test` needs Go on the path.
+Not yet published to npm.
+
+## Use
+
+```ts
+import { Tunna, TunnaError } from "tunna";
+
+const tunna = new Tunna({
+  url: "https://store.example.com",
+  key: { id: process.env.TUNNA_KEY_ID!, secret: process.env.TUNNA_KEY_SECRET! },
+});
+
+await tunna.buckets.create("photos");
+await tunna.objects.put("photos", "2026/a.jpg", bytes, {
+  contentType: "image/jpeg",
+  metadata: { camera: "x100" },
+});
+
+const res = await tunna.objects.get("photos", "2026/a.jpg");
+res.contentType;                 // "image/jpeg"
+res.metadata.camera;             // "x100"
+await res.response.arrayBuffer(); // or read res.body as a stream
+
+for await (const obj of tunna.objects.list("photos", { prefix: "2026/" })) {
+  console.log(obj.key, obj.size);
+}
+
+// Large files: numbered parts, several in flight, per-part checksums.
+await tunna.upload("photos", "big.bin", file, {
+  partSize: 8 << 20,
+  concurrency: 4,
+  onProgress: (sent, total) => console.log(sent / total),
+});
+
+// A URL a browser can PUT to for the next hour, without holding the key.
+const url = await tunna.presign({ method: "PUT", bucket: "photos", key: "b.jpg", expiresIn: 3600 });
+
+try {
+  await tunna.buckets.get("nope");
+} catch (err) {
+  if (err instanceof TunnaError && err.code === "bucket_not_found") { /* ... */ }
+}
+```
+
+Without a `key` the client is anonymous and can read public buckets only.
+Every signing call is asynchronous because HMAC comes from `crypto.subtle`.
+
+| Group | Methods |
+|-------|---------|
+| `tunna.buckets` | `list`, `get`, `create`, `delete` |
+| `tunna.objects` | `put`, `get`, `head`, `delete`, `list` (async iterator) |
+| `tunna.apiKeys` | `list`, `get`, `create`, `patch`, `rotate`, `delete` (admin key only) |
+| `tunna.uploads` | `create`, `putPart`, `get`, `complete`, `abort` (the raw routes) |
+| `tunna.upload` | the concurrent uploader on top of them |
+| `tunna.presign` | a presigned URL for one request |
+
+Errors: `TunnaError` is the server's answer, with `code` typed as the
+union generated from `spec/errors.json`; `TransportError` is no answer or
+one outside the contract, with the underlying error as `cause`.
+
+Subpath exports `tunna/sign`, `tunna/encode` and `tunna/crc32c` give the
+primitives without the client, for anyone building on the wire contract
+directly.
 
 ## Develop
 
-Needs [Bun](https://bun.sh). Everything runs from this directory.
+Needs [Bun](https://bun.sh) and, for the conformance test, Go. Everything
+runs from this directory.
 
 ```
 bun install              # exact-pinned dev dependencies
-bun test                 # vector tests, from ../../spec
+bun test                 # vectors, client, upload, and conformance against cmd/tunna-fixtures
 bun run check            # tsc --noEmit
 bun run gen              # regenerate src/errors.generated.ts from ../../spec
 bun run build            # dist/ via tsdown: .mjs, .cjs, declarations
@@ -32,13 +92,12 @@ bun run smoke            # build, then plain Node imports both formats
 
 | Path | What |
 |------|------|
+| `src/client.ts` | `Tunna`, the request pipeline, `upload` and `presign`. |
+| `src/buckets.ts`, `objects.ts`, `api-keys.ts`, `uploads.ts` | One group per section of the wire contract. |
 | `src/encode.ts` | Segment, path and query encoding for the canonical request (`spec/vectors/encoding.json`). |
 | `src/sign.ts` | Canonical string, HMAC-SHA256, header and presigned forms (`spec/vectors/signing.json`). |
 | `src/crc32c.ts` | CRC-32C, combine, and the `crc32c=` wire form (`spec/vectors/crc32c.json`). |
+| `src/errors.ts` | `TunnaError`, `TransportError`. |
 | `src/errors.generated.ts` | `ErrorCode`, status and stage tables, `SPEC_VERSION`. Generated. |
-| `src/index.ts` | Public surface. |
-| `test/` | `bun test` files: one per vector file, the client pipeline with an injected fetch, the conformance runner, and the two plain-Node smoke scripts. |
+| `test/` | Vector tests, the client and upload helper against an injected `fetch`, the conformance runner, the plain-Node smoke scripts. |
 | `scripts/gen-errors.ts` | The generator. |
-
-Subpath exports `tunna/sign`, `tunna/encode` and `tunna/crc32c` give the
-primitives without the client.

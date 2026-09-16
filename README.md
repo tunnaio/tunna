@@ -21,6 +21,7 @@ built. Nothing here is usable yet.
 | `sig/`, `internal/`, `cmd/tunna` | The server. See ADR-0005 for the package layout. |
 | `cmd/tunna-fixtures` | The API in the conformance fixture state, with `POST /reset`, for SDK conformance runners (ADR-0010). |
 | `cmd/tunna-load` | Load generator; see `docs/benchmarks/`. |
+| `sdk/typescript` | The TypeScript client: browser and Node, no dependencies, conformance-tested against the same cases as the server. |
 | `sdk/` | Client SDKs, one directory per language. |
 
 ## Reading order
