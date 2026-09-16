@@ -4,7 +4,13 @@ import { encodePath, encodeQuery } from "./encode.ts";
 import { isErrorCode } from "./errors.generated.ts";
 import { TransportError, TunnaError } from "./errors.ts";
 import { Objects, type ObjectRecord } from "./objects.ts";
-import { authorization, HEADER_DATE, type Key } from "./sign.ts";
+import {
+  authorization,
+  HEADER_DATE,
+  presignQuery,
+  type Key,
+  type SigningRequest,
+} from "./sign.ts";
 import { Uploads, type UploadCreateOptions } from "./uploads.ts";
 
 type Fetch = (
@@ -41,6 +47,14 @@ export interface UploadOptions {
   contentType?: string;
   metadata?: Record<string, string>;
   onProgress?: (sent: number, total: number) => void;
+}
+
+export interface PresignOptions {
+  method: "GET" | "HEAD" | "PUT" | "DELETE";
+  bucket: string;
+  key: string;
+  expiresIn: number;
+  headers?: Record<string, string>;
 }
 
 export class Tunna {
@@ -146,6 +160,29 @@ export class Tunna {
       } catch {}
       throw err;
     }
+  }
+
+  async presign(options: PresignOptions): Promise<string> {
+    if (!this.#key) {
+      throw new TypeError("presign requires authentication");
+    }
+
+    const expires = this.#now() + options.expiresIn;
+    const req: SigningRequest = {
+      method: options.method,
+      path: [options.bucket, options.key],
+    };
+    if (options.headers) {
+      req.headers = options.headers;
+      req.signedHeaders = Object.keys(options.headers);
+    }
+
+    return (
+      this.#base +
+      encodePath([options.bucket, options.key]) +
+      "?" +
+      (await presignQuery(req, this.#key, expires))
+    );
   }
 
   /** @internal */

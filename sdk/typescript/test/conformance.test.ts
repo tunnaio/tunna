@@ -12,7 +12,13 @@ import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { encodePath, encodeQuery } from "../src/encode.ts";
 import { SPEC_VERSION } from "../src/errors.generated.ts";
-import { authorization, HEADER_DATE, presignQuery, type Key, type Request as SigRequest } from "../src/sign.ts";
+import {
+  authorization,
+  HEADER_DATE,
+  presignQuery,
+  type Key,
+  type SigningRequest as SigRequest,
+} from "../src/sign.ts";
 import { FixtureServer } from "./fixture-server.ts";
 import { generate, loadSpec, specVersion } from "./vectors.ts";
 
@@ -23,8 +29,19 @@ type Gen = { seed: number; length: number };
 
 type Auth =
   | "none"
-  | { key: string; signed_headers?: string[]; time_offset_seconds?: number; corrupt_signature?: boolean }
-  | { presign: { key: string; expires_in_seconds: number; signed_headers?: string[] } };
+  | {
+      key: string;
+      signed_headers?: string[];
+      time_offset_seconds?: number;
+      corrupt_signature?: boolean;
+    }
+  | {
+      presign: {
+        key: string;
+        expires_in_seconds: number;
+        signed_headers?: string[];
+      };
+    };
 
 type Body = { json?: unknown; text?: string; hex?: string; bytes?: Gen };
 
@@ -43,12 +60,25 @@ type Expect = {
 
 type Step = {
   name?: string;
-  request: { method: string; path: string[]; query?: Pair[]; headers?: Record<string, string>; auth?: Auth; body?: Body; expect_continue?: boolean };
+  request: {
+    method: string;
+    path: string[];
+    query?: Pair[];
+    headers?: Record<string, string>;
+    auth?: Auth;
+    body?: Body;
+    expect_continue?: boolean;
+  };
   expect: Expect;
   capture?: Record<string, string>;
 };
 
-type Case = { name: string; description?: string; fixtures?: string[]; steps: Step[] };
+type Case = {
+  name: string;
+  description?: string;
+  fixtures?: string[];
+  steps: Step[];
+};
 type CaseFile = { spec: string; cases: Case[] };
 
 type Fixtures = {
@@ -57,7 +87,11 @@ type Fixtures = {
 };
 
 const fx = loadSpec<Fixtures>("conformance/fixtures.json");
-const statusOf = new Map(loadSpec<{ errors: { code: string; status: number }[] }>("errors.json").errors.map((e) => [e.code, e.status]));
+const statusOf = new Map(
+  loadSpec<{ errors: { code: string; status: number }[] }>(
+    "errors.json",
+  ).errors.map((e) => [e.code, e.status]),
+);
 const casesDir = new URL("../../../spec/conformance/cases/", import.meta.url);
 
 function fixtureKey(name: string): Key {
@@ -68,7 +102,8 @@ function fixtureKey(name: string): Key {
 
 function unsupported(c: Case): string | undefined {
   for (const name of c.fixtures ?? []) {
-    if (!(name in fx.keys) && !(name in fx.buckets)) return `unknown fixture ${name}`;
+    if (!(name in fx.keys) && !(name in fx.buckets))
+      return `unknown fixture ${name}`;
   }
   return undefined;
 }
@@ -93,7 +128,9 @@ test("the fixture server implements this package's spec version", async () => {
   expect(body.spec).toBe(SPEC_VERSION);
 });
 
-for (const file of readdirSync(casesDir).filter((f) => f.endsWith(".json")).sort()) {
+for (const file of readdirSync(casesDir)
+  .filter((f) => f.endsWith(".json"))
+  .sort()) {
   const cf = loadSpec<CaseFile>(`conformance/cases/${file}`);
 
   describe(file, () => {
@@ -124,9 +161,13 @@ async function runCase(c: Case): Promise<void> {
 
     // Decoded inputs, after substitution.
     const segments = s.request.path.map(sub);
-    const query: Pair[] = (s.request.query ?? []).map(([k, v]) => [sub(k), sub(v)]);
+    const query: Pair[] = (s.request.query ?? []).map(([k, v]) => [
+      sub(k),
+      sub(v),
+    ]);
     const headers: Record<string, string> = {};
-    for (const [k, v] of Object.entries(s.request.headers ?? {})) headers[k] = sub(v);
+    for (const [k, v] of Object.entries(s.request.headers ?? {}))
+      headers[k] = sub(v);
 
     // Body
     let body: Uint8Array<ArrayBuffer> | string | undefined;
@@ -134,7 +175,10 @@ async function runCase(c: Case): Promise<void> {
       const b = s.request.body;
       if (b.json !== undefined) {
         body = sub(JSON.stringify(b.json));
-        if (!Object.keys(headers).some((h) => h.toLowerCase() === "content-type")) headers["Content-Type"] = "application/json";
+        if (
+          !Object.keys(headers).some((h) => h.toLowerCase() === "content-type")
+        )
+          headers["Content-Type"] = "application/json";
       } else if (b.text !== undefined) {
         body = sub(b.text);
       } else if (b.hex !== undefined) {
@@ -146,13 +190,24 @@ async function runCase(c: Case): Promise<void> {
 
     const now = Math.floor(Date.now() / 1000);
     const auth = s.request.auth ?? "none";
-    const sigReq: SigRequest = { method: s.request.method, path: segments, query, headers };
+    const sigReq: SigRequest = {
+      method: s.request.method,
+      path: segments,
+      query,
+      headers,
+    };
     let url = server.url + encodePath(segments);
 
     if (auth !== "none" && "presign" in auth) {
       const p = auth.presign;
       if (p.signed_headers) sigReq.signedHeaders = p.signed_headers;
-      url += "?" + (await presignQuery(sigReq, fixtureKey(p.key), now + p.expires_in_seconds));
+      url +=
+        "?" +
+        (await presignQuery(
+          sigReq,
+          fixtureKey(p.key),
+          now + p.expires_in_seconds,
+        ));
     } else if (query.length > 0) {
       url += "?" + encodeQuery(query);
     }
@@ -166,7 +221,11 @@ async function runCase(c: Case): Promise<void> {
       headers["Authorization"] = authz;
     }
 
-    const res = await fetch(url, { method: s.request.method, headers, body: body ?? null });
+    const res = await fetch(url, {
+      method: s.request.method,
+      headers,
+      body: body ?? null,
+    });
     const respBody = new Uint8Array(await res.arrayBuffer());
 
     check(at, s.expect, res, respBody, sub);
@@ -177,17 +236,29 @@ async function runCase(c: Case): Promise<void> {
   }
 }
 
-function check(at: (m: string) => string, e: Expect, res: Response, body: Uint8Array, sub: (s: string) => string): void {
+function check(
+  at: (m: string) => string,
+  e: Expect,
+  res: Response,
+  body: Uint8Array,
+  sub: (s: string) => string,
+): void {
   const text = () => new TextDecoder().decode(body);
   let wantStatus = e.status;
 
   if (e.error !== undefined) {
     const st = statusOf.get(e.error);
-    if (st === undefined) throw new Error(at(`expects error ${e.error} which is not in errors.json`));
+    if (st === undefined)
+      throw new Error(
+        at(`expects error ${e.error} which is not in errors.json`),
+      );
     wantStatus ??= st;
     const eb = parseJSON(body);
     expect(eb, at(`error body is not JSON: ${text()}`)).not.toBeUndefined();
-    expect((eb as { error?: { code?: string } })?.error?.code, at("error code")).toBe(e.error);
+    expect(
+      (eb as { error?: { code?: string } })?.error?.code,
+      at("error code"),
+    ).toBe(e.error);
   }
   if (wantStatus !== undefined) {
     expect(res.status, at(`status; body: ${text()}`)).toBe(wantStatus);
@@ -211,15 +282,20 @@ function check(at: (m: string) => string, e: Expect, res: Response, body: Uint8A
       if (diff) throw new Error(at(`${diff}\nbody: ${text()}`));
     }
     for (const ptr of e.json_present ?? []) {
-      if (pointer(got, ptr) === undefined) throw new Error(at(`${ptr} should be present\nbody: ${text()}`));
+      if (pointer(got, ptr) === undefined)
+        throw new Error(at(`${ptr} should be present\nbody: ${text()}`));
     }
     for (const ptr of e.json_absent ?? []) {
-      if (pointer(got, ptr) !== undefined) throw new Error(at(`${ptr} should be absent`));
+      if (pointer(got, ptr) !== undefined)
+        throw new Error(at(`${ptr} should be absent`));
     }
   }
 
   if (e.body_sha256 !== undefined) {
-    expect(createHash("sha256").update(body).digest("hex"), at("body sha256")).toBe(e.body_sha256);
+    expect(
+      createHash("sha256").update(body).digest("hex"),
+      at("body sha256"),
+    ).toBe(e.body_sha256);
   }
   if (e.body_length !== undefined) {
     expect(body.length, at("body length")).toBe(e.body_length);
@@ -228,7 +304,12 @@ function check(at: (m: string) => string, e: Expect, res: Response, body: Uint8A
     expect(body.length === 0, at("body empty")).toBe(e.body_empty);
   }
   if (e.body_bytes !== undefined) {
-    expect(Buffer.from(body).equals(generate(e.body_bytes.seed, e.body_bytes.length)), at("body equals generated bytes")).toBe(true);
+    expect(
+      Buffer.from(body).equals(
+        generate(e.body_bytes.seed, e.body_bytes.length),
+      ),
+      at("body equals generated bytes"),
+    ).toBe(true);
   }
 }
 
@@ -256,7 +337,8 @@ function subset(want: unknown, got: unknown, at: string): string {
   const here = at || "/";
   if (Array.isArray(want)) {
     if (!Array.isArray(got)) return `${here}: want array, got ${typeof got}`;
-    if (got.length !== want.length) return `${here}: array length ${got.length}, want ${want.length}`;
+    if (got.length !== want.length)
+      return `${here}: array length ${got.length}, want ${want.length}`;
     for (let i = 0; i < want.length; i++) {
       const d = subset(want[i], got[i], `${at}/${i}`);
       if (d) return d;
@@ -264,7 +346,8 @@ function subset(want: unknown, got: unknown, at: string): string {
     return "";
   }
   if (want !== null && typeof want === "object") {
-    if (got === null || typeof got !== "object" || Array.isArray(got)) return `${here}: want object, got ${typeof got}`;
+    if (got === null || typeof got !== "object" || Array.isArray(got))
+      return `${here}: want object, got ${typeof got}`;
     for (const [k, wv] of Object.entries(want)) {
       if (!(k in got)) return `${at}/${k}: missing`;
       const d = subset(wv, (got as Record<string, unknown>)[k], `${at}/${k}`);
@@ -272,7 +355,9 @@ function subset(want: unknown, got: unknown, at: string): string {
     }
     return "";
   }
-  return Object.is(want, got) ? "" : `${here}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`;
+  return Object.is(want, got)
+    ? ""
+    : `${here}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`;
 }
 
 /** RFC 6901 JSON pointer; undefined when it does not resolve. */
@@ -297,7 +382,8 @@ function pointer(v: unknown, ptr: string): unknown {
 }
 
 function capture(from: string, res: Response, body: Uint8Array): string {
-  if (from.startsWith("header:")) return res.headers.get(from.slice("header:".length)) ?? "";
+  if (from.startsWith("header:"))
+    return res.headers.get(from.slice("header:".length)) ?? "";
   const v = parseJSON(body);
   if (v === undefined) throw new Error(`capture ${from}: body is not JSON`);
   const val = pointer(v, from);

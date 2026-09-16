@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { authorization, canonical, presignQuery, signature, type Key, type Request } from "../src/sign.ts";
+import {
+  authorization,
+  canonical,
+  presignQuery,
+  signature,
+  type Key,
+  type SigningRequest,
+} from "../src/sign.ts";
 import { loadSpec, specVersion } from "./vectors.ts";
 
 type Case = {
@@ -15,13 +22,18 @@ type Case = {
     signed_headers?: string[];
   };
   time: number;
-  expected: { canonical: string; signature: string; authorization?: string; query?: string };
+  expected: {
+    canonical: string;
+    signature: string;
+    authorization?: string;
+    query?: string;
+  };
 };
 
 const file = loadSpec<{ spec: string; cases: Case[] }>("vectors/signing.json");
 
-function toRequest(r: Case["request"]): Request {
-  const req: Request = { method: r.method, path: r.path };
+function toRequest(r: Case["request"]): SigningRequest {
+  const req: SigningRequest = { method: r.method, path: r.path };
   if (r.query) req.query = r.query;
   if (r.headers) req.headers = r.headers;
   if (r.signed_headers) req.signedHeaders = r.signed_headers;
@@ -41,7 +53,9 @@ describe("spec/vectors/signing.json", () => {
     });
 
     test(`${c.name}: signature`, async () => {
-      expect(await signature(c.key.secret, c.expected.canonical)).toBe(c.expected.signature);
+      expect(await signature(c.key.secret, c.expected.canonical)).toBe(
+        c.expected.signature,
+      );
     });
 
     // Captured outside the closures: TypeScript's narrowing of an optional
