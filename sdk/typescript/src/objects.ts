@@ -1,8 +1,8 @@
 import type { Tunna } from "./client.ts";
 import { crc32c, encodeChecksum } from "./crc32c.ts";
-import { TransportError, TunnaError } from "./errors.ts";
+import { TransportError } from "./errors.ts";
 
-interface WireObject {
+export interface WireObject {
   bucket: string;
   key: string;
   size: number;
@@ -94,7 +94,7 @@ function requiredHeader(headers: Headers, name: string): string {
   return v;
 }
 
-function toObject(o: WireObject): ObjectRecord {
+export function toObject(o: WireObject): ObjectRecord {
   return {
     bucket: o.bucket,
     key: o.key,
