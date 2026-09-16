@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="tunna">
+  <!-- The mark on a dark tile, for avatars and app icons. -->
+  <rect width="256" height="256" rx="48" fill="#1f2937"/>
+  <g fill="none" stroke="#f0b35a" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" transform="translate(128 128) scale(0.82) translate(-128 -128)">
+    <path d="M84 48 Q54 128 84 208 Q128 222 172 208 Q202 128 172 48 Q128 34 84 48 Z"/>
+    <path d="M66 100 Q128 114 190 100"/>
+    <path d="M66 156 Q128 170 190 156"/>
+    <path d="M128 42 V214" stroke-width="10"/>
+  </g>
+</svg>

@@ -1,3 +1,5 @@
+<img src="docs/logo/tunna-mark.svg" alt="" width="72" align="left">
+
 # tunna
 
 [![ci](https://github.com/tunnaio/tunna/actions/workflows/ci.yml/badge.svg)](https://github.com/tunnaio/tunna/actions/workflows/ci.yml)
