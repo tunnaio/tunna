@@ -28,12 +28,23 @@ release has been cut and the wire may still change before `0.1.0`; the
 
 ## Run it
 
+From the published image, pinned to a release:
+
+```
+docker run -p 8000:8000 -v tunna-data:/data \
+  -e TUNNA_BOOTSTRAP_KEY=tk_admin:change-me ghcr.io/tunnaio/tunna:0.1.0-alpha.1
+```
+
+Or from source, or with a binary from the
+[releases page](https://github.com/tunnaio/tunna/releases):
+
 ```
 go build ./cmd/tunna
 TUNNA_DATA_DIR=./data TUNNA_BOOTSTRAP_KEY=tk_admin:change-me ./tunna
 ```
 
-The server listens on `:8000` by default. `GET /-/health` needs no key;
+The server listens on `:8000` by default, or on `PORT` when a platform
+sets it. `GET /-/health` needs no key;
 everything else is signed. The bootstrap key is an admin key; use it to
 create managed keys through `POST /-/keys`, then drop the variable. All
 variables are in [`docs/configuration.md`](docs/configuration.md).
