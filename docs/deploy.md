@@ -39,6 +39,22 @@ Health: `GET /-/health` answers `{"status":"ok"}` without credentials.
 Logs go to stdout, one line per event; the effective configuration is the
 first line, secrets redacted.
 
+## Published images
+
+Every server release (ADR-0012) pushes `ghcr.io/tunnaio/tunna:<version>`
+for amd64 and arm64, with `alpha` pointing at the newest prerelease and
+`latest` at the newest stable version. Pin the version in production:
+
+```
+docker run -p 8000:8000 -v tunna-data:/data \
+  -e TUNNA_BOOTSTRAP_KEY=tk_admin:change-me ghcr.io/tunnaio/tunna:0.1.0-alpha.1
+```
+
+The image and each release binary carry a build provenance attestation:
+`gh attestation verify oci://ghcr.io/tunnaio/tunna:<version> --owner tunnaio`
+checks that it was built by this repository's release workflow from the
+tagged commit.
+
 ## Dokploy, and similar
 
 Create an application from the GitHub repository with the Dockerfile
