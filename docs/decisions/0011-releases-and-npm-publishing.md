@@ -85,6 +85,10 @@ cannot be removed, so `npm install tunna` does resolve to the newest
 alpha until `0.1.0` exists. The `alpha` tag is still the honest name to
 install by, and the README says so; the version string itself carries
 the warning.
+Since `latest` cannot be removed and a stale `latest` is worse than a
+current one, the maintainer moves it to the newest alpha by hand after
+each approval, `npm dist-tag add tunna@<version> latest`, until `0.1.0`
+takes it over for good; the workflow moves only `alpha`.
 `0.1.0` is published when the spec drops `-draft`, and from then on the
 SDK's version is its own and says nothing about the spec version, which
 `SPEC_VERSION` carries.
