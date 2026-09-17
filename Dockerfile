@@ -6,12 +6,17 @@ RUN go mod download
 COPY . .
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /tunna ./cmd/tunna
+# The data directory must exist in the image owned by the runtime user:
+# VOLUME creates it as root otherwise, and the non-root server cannot open
+# its database there.
+RUN mkdir -p /data && chown 65532:65532 /data
 
 # Runtime: no shell, no package manager, non-root (uid 65532). The data
 # directory is a volume; a named volume inherits this ownership, a bind
 # mount must be writable by 65532.
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /tunna /tunna
+COPY --from=build --chown=65532:65532 /data /data
 # No TUNNA_ADDR default here: the binary listens on :8000 unless the
 # platform sets PORT or TUNNA_ADDR, and an image default would shadow PORT.
 ENV TUNNA_DATA_DIR=/data
