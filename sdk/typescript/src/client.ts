@@ -73,6 +73,14 @@ export class Tunna {
   readonly #fetch: Fetch;
 
   constructor(options: TunnaOptions) {
+    if (!options.url) throw new TypeError("TunnaOptions.url must not be empty");
+    if (options.key) {
+      if (!options.key.id)
+        throw new TypeError("TunnaOptions.key.id must not be empty");
+      if (!options.key.secret)
+        throw new TypeError("TunnaOptions.key.secret must not be empty");
+    }
+
     this.#base = options.url.replace(/\/+$/, "");
     this.#key = options.key;
     this.#fetch = options.fetch ?? defaultFetch.bind(globalThis);
@@ -221,6 +229,12 @@ export class Tunna {
     }
 
     if (res.headers.get("Content-Type")?.includes("application/json")) {
+      if (call.method === "HEAD" || res.body === null) {
+        throw new TransportError(
+          `${call.method} ${url}: ${res.status}; HEAD answers carry no error body, repeat as GET for the code`,
+        );
+      }
+
       const body = await res.json();
       const code = body?.error?.code;
       if (!isErrorCode(code)) {

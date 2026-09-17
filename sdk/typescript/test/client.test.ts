@@ -151,3 +151,29 @@ describe("buckets", () => {
     expect(seen[0]!.url).toBe("http://store.test/-/buckets/photos");
   });
 });
+
+describe("errors without a body", () => {
+  test("a failed HEAD names the status and says why there is no code", async () => {
+    // HEAD answers carry the error's Content-Type but no body, so the code
+    // cannot be read; the message must say so rather than "code undefined".
+    const { tunna } = client(() => new Response(null, { status: 404, headers: { "Content-Type": "application/json" } }));
+    const err = await tunna.objects.head("b", "missing").catch((e) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect(err.message).toContain("404");
+    expect(err.message).toContain("HEAD");
+    expect(err.message).not.toContain("undefined");
+  });
+});
+
+describe("construction", () => {
+  test("an empty key id or secret is refused up front, naming the field", () => {
+    // Otherwise the first request fails inside crypto.subtle with
+    // "Zero-length key is not supported", which names nothing.
+    expect(() => new Tunna({ url: "http://store.test", key: { id: "", secret: "s" } })).toThrow(/key\.id/);
+    expect(() => new Tunna({ url: "http://store.test", key: { id: "tk_x", secret: "" } })).toThrow(/key\.secret/);
+  });
+
+  test("an empty url is refused", () => {
+    expect(() => new Tunna({ url: "" })).toThrow(/url/);
+  });
+});
