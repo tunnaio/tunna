@@ -72,6 +72,7 @@ func run() error {
 			Objects:       db,
 			Blobs:         blobs,
 			Uploads:       db,
+			CORSOrigins:   cfg.CORSOrigins,
 		}),
 	}
 
