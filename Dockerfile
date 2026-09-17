@@ -1,11 +1,17 @@
-# Build from source; the server is one static binary (ADR-0005).
-FROM golang:1.27.1-alpine AS build
+# Build from source; the server is one static binary (ADR-0005). The build
+# stage runs on the builder's own platform and cross-compiles for the
+# target, so a multi-platform build never runs the Go compiler under
+# emulation.
+FROM --platform=$BUILDPLATFORM golang:1.27.1-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /tunna ./cmd/tunna
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /tunna ./cmd/tunna
 # The data directory must exist in the image owned by the runtime user:
 # VOLUME creates it as root otherwise, and the non-root server cannot open
 # its database there.
