@@ -276,6 +276,10 @@ To revisit:
 - Whether `upload` should resume a session after a page reload, which
   needs the session id persisted by the caller; the wire already allows
   it.
+- Adaptive concurrency in `upload`: start low and add workers while
+  throughput rises. Measured 2026-09-17 on a 500 Mbit link: with
+  read-ahead, 4 in flight gave 37 MiB/s, 8 and 16 both about 43, so the
+  default is 8. A slow link loses nothing at 8, only holds more memory.
 
 ## Action items
 

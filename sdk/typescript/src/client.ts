@@ -42,7 +42,7 @@ export interface TunnaOptions {
   now?: Now;
 }
 
-/** Options for upload: part size (default 8 MiB), parts in flight (default 4), and a progress callback in bytes. */
+/** Options for upload: part size (default 8 MiB), parts in flight (default 8; each worker holds up to two parts), and a progress callback in bytes. */
 export interface UploadOptions {
   partSize?: number;
   concurrency?: number;
@@ -106,7 +106,7 @@ export class Tunna {
     const {
       partSize = 8 << 20, // 8mb
       contentType,
-      concurrency = 4,
+      concurrency = 8,
       metadata,
       onProgress,
     } = options ?? {};
@@ -123,30 +123,36 @@ export class Tunna {
     let sent = 0;
     const checksums = new Array<string>(count);
 
-    async function slice(start: number, end: number) {
-      if (source instanceof Blob) {
-        return new Uint8Array(await source.slice(start, end).arrayBuffer());
-      }
-      return source.subarray(start, end);
-    }
+    type Prepared = { n: number; bytes: Uint8Array<ArrayBuffer> };
+
+    // prepare claims the next part number and reads its bytes. Each worker
+    // keeps one part in flight and one being prepared, so the network never
+    // waits on a disk read; that is the whole of the read-ahead.
+    const prepare = async (): Promise<Prepared | undefined> => {
+      const n = next++;
+      if (n > count) return undefined;
+      const start = (n - 1) * partSize;
+      const end = Math.min(n * partSize, size);
+      const bytes =
+        source instanceof Blob
+          ? new Uint8Array(await source.slice(start, end).arrayBuffer())
+          : source.subarray(start, end);
+      return { n, bytes };
+    };
 
     const abortController = new AbortController();
     const worker = async (): Promise<void> => {
-      for (;;) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-        const n = next++;
-        if (n > count) return;
-        const start = (n - 1) * partSize;
-        const end = Math.min(n * partSize, size);
-        const bytes = await slice(start, end);
+      let current = await prepare();
+      while (current !== undefined) {
+        if (abortController.signal.aborted) return;
+        const ahead = prepare();
+        const { n, bytes } = current;
         let tries = 1;
-        while (true) {
+        for (;;) {
           try {
             const part = await this.uploads.putPart(session.id, n, bytes);
             checksums[n - 1] = part.checksum;
-            sent += end - start;
+            sent += bytes.byteLength;
             onProgress?.(sent, size);
             break;
           } catch (err) {
@@ -155,9 +161,11 @@ export class Tunna {
               continue;
             }
             abortController.abort();
+            ahead.catch(() => {});
             throw err;
           }
         }
+        current = await ahead;
       }
     };
 

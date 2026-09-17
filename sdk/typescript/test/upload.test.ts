@@ -20,7 +20,7 @@ type Fake = {
   puts: string[];
 };
 
-function fakeServer(opts: { failPart?: { n: number; times: number; how: "throw" | "422" } } = {}) {
+function fakeServer(opts: { failPart?: { n: number; times: number; how: "throw" | "422" }; holdMs?: number } = {}) {
   const state: Fake = { parts: new Map(), attempts: new Map(), inFlight: 0, maxInFlight: 0, aborted: false, completed: undefined, puts: [] };
   const json = (status: number, body: unknown) =>
     new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -45,7 +45,7 @@ function fakeServer(opts: { failPart?: { n: number; times: number; how: "throw" 
       }
       state.inFlight++;
       state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
-      await new Promise((r) => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, opts.holdMs ?? 5));
       state.inFlight--;
       const bytes = new Uint8Array(init?.body as ArrayBuffer | Uint8Array);
       state.parts.set(n, bytes);
@@ -135,5 +135,58 @@ describe("upload", () => {
     await tunna.upload("b", "k", new Uint8Array(0), { partSize });
     expect(state.puts).toEqual(["/b/k"]);
     expect(state.parts.size).toBe(0);
+  });
+});
+
+// A Blob whose slices take a fixed time to read, standing in for a disk,
+// and which reports whether a read happened while a part was in flight.
+class SlowBlob extends Blob {
+  readonly readMs: number;
+  readonly inFlight: () => number;
+  reading = 0;
+  maxReading = 0;
+  overlapped = false;
+  constructor(parts: BlobPart[], readMs: number, inFlight: () => number) {
+    super(parts);
+    this.readMs = readMs;
+    this.inFlight = inFlight;
+  }
+  override slice(start?: number, end?: number, contentType?: string): Blob {
+    const piece = super.slice(start, end, contentType);
+    const self = this;
+    const real = piece.arrayBuffer.bind(piece);
+    piece.arrayBuffer = async () => {
+      self.reading++;
+      self.maxReading = Math.max(self.maxReading, self.reading);
+      // Sampled at both ends of the read: read-ahead starts the read before
+      // the previous part is on the wire, so the overlap shows at the end.
+      if (self.inFlight() > 0) self.overlapped = true;
+      await new Promise((r) => setTimeout(r, self.readMs));
+      if (self.inFlight() > 0) self.overlapped = true;
+      self.reading--;
+      return real();
+    };
+    return piece;
+  }
+}
+
+describe("upload read-ahead", () => {
+  const small = 1 << 20;
+
+  test("reads the next part while the current one is in flight", async () => {
+    // One worker: in lockstep a read never overlaps a part in flight; with
+    // read-ahead the read of part n+1 starts while part n is still held.
+    const { tunna, state } = fakeServer({ holdMs: 60 });
+    const blob = new SlowBlob([generate(6, 4 * small)], 20, () => state.inFlight);
+    await tunna.upload("b", "k", blob, { partSize: small, concurrency: 1 });
+    expect(state.parts.size).toBe(4);
+    expect(blob.overlapped).toBe(true);
+  });
+
+  test("holds at most one prepared part per worker", async () => {
+    const { tunna, state } = fakeServer({ holdMs: 30 });
+    const blob = new SlowBlob([generate(7, 8 * small)], 30, () => state.inFlight);
+    await tunna.upload("b", "k", blob, { partSize: small, concurrency: 2 });
+    expect(blob.maxReading).toBeLessThanOrEqual(2);
   });
 });
