@@ -56,7 +56,7 @@ See [`sdk/typescript`](sdk/typescript/README.md) for the rest.
 |------|------|
 | [`spec/`](spec/README.md) | The wire contract, error table, vectors, and conformance cases. Start here. |
 | [`docs/decisions/`](docs/decisions/) | Architecture decision records: every non-obvious choice, with the alternative it beat. |
-| [`docs/configuration.md`](docs/configuration.md), [`docs/schema.md`](docs/schema.md) | Environment variables; the SQLite schema and its migrations. |
+| [`docs/configuration.md`](docs/configuration.md), [`docs/deploy.md`](docs/deploy.md), [`docs/schema.md`](docs/schema.md) | Environment variables; the container image and what a host must provide; the SQLite schema and its migrations. |
 | [`docs/benchmarks/`](docs/benchmarks/) | Measurements and how they were taken. |
 | [`sig/`](sig/), [`internal/`](internal/), [`cmd/tunna`](cmd/tunna/) | The server. [ADR-0005](docs/decisions/0005-package-layout.md) describes the package layout. |
 | [`cmd/tunna-fixtures`](cmd/tunna-fixtures/) | The API in the conformance fixture state, for SDK conformance runners. |

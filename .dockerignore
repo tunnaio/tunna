@@ -1,0 +1,8 @@
+.git
+.github
+data
+docs
+sdk
+spec
+*.md
+CLAUDE.local.md

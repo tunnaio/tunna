@@ -10,7 +10,7 @@ required, and the server refuses to start without it.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `TUNNA_ADDR` | `:8000` | Listen address, `host:port`. An empty host means every interface. |
+| `TUNNA_ADDR` | `:8000` | Listen address, `host:port`. An empty host means every interface. When unset, a platform-style `PORT` variable is honoured as `:PORT`; `TUNNA_ADDR` wins when both are set. A `PORT` that is not a number from 1 to 65535 is a startup error. |
 | `TUNNA_DATA_DIR` | required | Directory for the metadata database and object files. Created if absent. |
 | `TUNNA_BOOTSTRAP_KEY` | none | `<id>:<secret>`. At startup the key is inserted, or updated and re-enabled if it exists. See below. |
 | `TUNNA_CORS_ORIGINS` | none | Comma-separated browser origins allowed by CORS: exact (`https://app.example.com`), one-label wildcard (`https://*.example.com`), or `*`. Empty means no CORS headers at all. See below. |

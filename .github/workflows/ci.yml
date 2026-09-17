@@ -106,6 +106,25 @@ jobs:
       - name: node smoke (esm and cjs)
         run: bun run smoke
 
+  docker-image:
+    name: docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: build
+        run: docker build -t tunna:ci --build-arg VERSION=${{ github.sha }} .
+      # The image answers health without credentials; that proves the
+      # binary starts, reads its environment and listens.
+      - name: starts and answers health
+        run: |
+          docker run -d --name tunna -p 8000:8000 tunna:ci
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:8000/-/health; then echo; exit 0; fi
+            sleep 0.5
+          done
+          docker logs tunna
+          exit 1
+
   benchmarks-compile:
     name: benchmark module compiles
     runs-on: ubuntu-latest

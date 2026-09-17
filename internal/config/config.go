@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/tunnaio/tunna"
 )
 
 const (
+	envPort         = "PORT"
 	envAddr         = "TUNNA_ADDR"
 	envDataDir      = "TUNNA_DATA_DIR"
 	envBootstrapKey = "TUNNA_BOOTSTRAP_KEY"
@@ -32,8 +34,19 @@ type Config struct {
 // TUNNA_DATA_DIR has none and is required.
 func Load() (Config, error) {
 	cfg := Config{
-		Addr:    envOr(envAddr, ":8000"),
+		Addr:    os.Getenv(envAddr),
 		DataDir: os.Getenv(envDataDir),
+	}
+
+	if cfg.Addr == "" {
+		port, err := strconv.Atoi(envOr(envPort, "8000"))
+		if err != nil {
+			return Config{}, fmt.Errorf("%s must be a number", envPort)
+		}
+		if port < 1 || port > 65535 {
+			return Config{}, fmt.Errorf("%s must be in the range 1 - 65535", envPort)
+		}
+		cfg.Addr = fmt.Sprintf(":%d", port)
 	}
 
 	if cfg.DataDir == "" {

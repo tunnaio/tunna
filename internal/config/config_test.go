@@ -185,3 +185,63 @@ func TestLogValuesListsCORSOrigins(t *testing.T) {
 		t.Errorf("startup log should list every effective origin:\n%s", out)
 	}
 }
+
+func TestLoadPortFallsBackToPlatformPort(t *testing.T) {
+	t.Setenv("TUNNA_DATA_DIR", "./data")
+	t.Setenv("TUNNA_ADDR", "")
+	t.Setenv("PORT", "3000")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Addr != ":3000" {
+		t.Errorf("Addr = %q, want :3000 from PORT when TUNNA_ADDR is unset", cfg.Addr)
+	}
+}
+
+func TestLoadAddrWinsOverPort(t *testing.T) {
+	t.Setenv("TUNNA_DATA_DIR", "./data")
+	t.Setenv("TUNNA_ADDR", "127.0.0.1:9000")
+	t.Setenv("PORT", "3000")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Addr != "127.0.0.1:9000" {
+		t.Errorf("Addr = %q, want TUNNA_ADDR to win over PORT", cfg.Addr)
+	}
+}
+
+func TestLoadNeitherAddrNorPortIsTheDefault(t *testing.T) {
+	t.Setenv("TUNNA_DATA_DIR", "./data")
+	t.Setenv("TUNNA_ADDR", "")
+	t.Setenv("PORT", "")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Addr != ":8000" {
+		t.Errorf("Addr = %q, want :8000", cfg.Addr)
+	}
+}
+
+func TestLoadPortMalformed(t *testing.T) {
+	for _, bad := range []string{"http", "80 00", "-1", "70000", ":3000"} {
+		t.Run(bad, func(t *testing.T) {
+			t.Setenv("TUNNA_DATA_DIR", "./data")
+			t.Setenv("TUNNA_ADDR", "")
+			t.Setenv("PORT", bad)
+
+			_, err := config.Load()
+			if err == nil {
+				t.Fatalf("Load accepted PORT=%q", bad)
+			}
+			if !strings.Contains(err.Error(), "PORT") {
+				t.Errorf("error %q does not name the variable", err)
+			}
+		})
+	}
+}
