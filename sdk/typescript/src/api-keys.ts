@@ -1,4 +1,4 @@
-import type { Tunna } from "./client.ts";
+import type { CallOptions, Tunna } from "./client.ts";
 
 /** What a scoped key may do in a bucket; write includes read (ADR-0008). */
 export type Access = "read" | "write";
@@ -94,62 +94,75 @@ export class ApiKeys {
   }
 
   /** Every key, by id. */
-  async list(): Promise<ApiKey[]> {
+  async list(options?: CallOptions): Promise<ApiKey[]> {
     const res = await this.#client.request({
       method: "GET",
       path: ["-", "keys"],
+      ...(options?.signal && { signal: options.signal }),
     });
     const body: { keys: WireApiKey[] } = await res.json();
     return body.keys.map(toApiKey);
   }
 
   /** One key; key_not_found when there is none. */
-  async get(id: string): Promise<ApiKey> {
+  async get(id: string, options?: CallOptions): Promise<ApiKey> {
     const res = await this.#client.request({
       method: "GET",
       path: ["-", "keys", id],
+      ...(options?.signal && { signal: options.signal }),
     });
     const body: WireApiKey = await res.json();
     return toApiKey(body);
   }
 
   /** Creates a key; the returned secret is shown this once. */
-  async create(options: ApiKeyCreateOptions): Promise<WithSecret<ApiKey>> {
+  async create(
+    key: ApiKeyCreateOptions,
+    options?: CallOptions,
+  ): Promise<WithSecret<ApiKey>> {
     const res = await this.#client.request({
       method: "POST",
       path: ["-", "keys"],
-      body: JSON.stringify(options),
+      body: JSON.stringify(key),
       headers: { "Content-Type": "application/json" },
+      ...(options?.signal && { signal: options.signal }),
     });
     return withSecret(res);
   }
 
   /** Changes the given fields; takes effect on the key's next request. */
-  async patch(id: string, options: ApiKeyPatchOptions): Promise<ApiKey> {
+  async patch(
+    id: string,
+    changes: ApiKeyPatchOptions,
+    options?: CallOptions,
+  ): Promise<ApiKey> {
     const res = await this.#client.request({
       method: "PATCH",
       path: ["-", "keys", id],
-      body: JSON.stringify(options),
+      body: JSON.stringify(changes),
       headers: { "Content-Type": "application/json" },
+      ...(options?.signal && { signal: options.signal }),
     });
     const body: WireApiKey = await res.json();
     return toApiKey(body);
   }
 
   /** Replaces the secret; the old one stops verifying at once, presigned URLs included. */
-  async rotate(id: string): Promise<WithSecret<ApiKey>> {
+  async rotate(id: string, options?: CallOptions): Promise<WithSecret<ApiKey>> {
     const res = await this.#client.request({
       method: "POST",
       path: ["-", "keys", id, "rotate"],
+      ...(options?.signal && { signal: options.signal }),
     });
     return withSecret(res);
   }
 
   /** Deletes a key. The server does not stop you deleting your own or the last admin. */
-  async delete(id: string): Promise<void> {
+  async delete(id: string, options?: CallOptions): Promise<void> {
     await this.#client.request({
       method: "DELETE",
       path: ["-", "keys", id],
+      ...(options?.signal && { signal: options.signal }),
     });
   }
 }

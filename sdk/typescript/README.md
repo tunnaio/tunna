@@ -4,7 +4,7 @@
 [![ci](https://github.com/tunnaio/tunna/actions/workflows/ci.yml/badge.svg)](https://github.com/tunnaio/tunna/actions/workflows/ci.yml)
 
 Client for the [tunna](../../README.md) object store. Runs in browsers and
-in Node 20 or later with no dependencies: the code uses `fetch`,
+in Node 20.3 or later with no dependencies: the code uses `fetch`,
 `crypto.subtle` and `ReadableStream` and nothing else. ESM and CommonJS
 from one source (ADR-0010). Every route in the wire contract is covered,
 and every conformance case in `spec/conformance` is replayed through this
@@ -53,6 +53,20 @@ await tunna.upload("photos", "big.bin", file, {
   onProgress: (sent, total) => console.log(sent / total),
 });
 
+// Cancelling: every method takes a signal. For an upload, aborting stops the
+// parts in flight and removes the half-written session from the server.
+const controller = new AbortController();
+cancelButton.onclick = () => controller.abort();
+try {
+  await tunna.upload("photos", "big.bin", file, { signal: controller.signal });
+} catch (err) {
+  if (controller.signal.aborted) { /* the user cancelled; nothing to report */ }
+  else throw err;
+}
+
+// Or a deadline on any single call.
+await tunna.objects.head("photos", "2026/a.jpg", { signal: AbortSignal.timeout(5_000) });
+
 // A URL a browser can PUT to for the next hour, without holding the key.
 const url = await tunna.presign({ method: "PUT", bucket: "photos", key: "b.jpg", expiresIn: 3600 });
 
@@ -66,6 +80,12 @@ try {
 Without a `key` the client is anonymous and can read public buckets only.
 Every signing call is asynchronous because HMAC comes from `crypto.subtle`.
 
+When the client reaches the server under one name and browsers under
+another (`http://tunna:8000` inside a compose network,
+`https://store.example.com` outside), set `publicUrl`: requests keep going
+to `url`, presigned URLs are built on `publicUrl`. The signature is the
+same either way, because the host is not signed.
+
 | Group | Methods |
 |-------|---------|
 | `tunna.buckets` | `list`, `get`, `create`, `patch`, `delete` (all but `list` and `get` need an admin key) |
@@ -74,10 +94,18 @@ Every signing call is asynchronous because HMAC comes from `crypto.subtle`.
 | `tunna.uploads` | `create`, `putPart`, `get`, `complete`, `abort` (the raw routes) |
 | `tunna.upload` | the concurrent uploader on top of them |
 | `tunna.presign` | a presigned URL for one request |
+| `tunna.health`, `tunna.version` | is the server up, and does it speak this package's spec (`compatible`); both sent unsigned |
 
 Errors: `TunnaError` is the server's answer, with `code` typed as the
 union generated from `spec/errors.json`; `TransportError` is no answer or
 one outside the contract, with the underlying error as `cause`.
+
+Every method takes `{ signal }` (an `AbortSignal`) as or in its last
+argument, `upload` included, where an abort also removes the half-written
+session from the server. A cancelled call rejects with the signal's reason,
+never a `TransportError`: an `AbortError` from `abort()`, a `TimeoutError`
+from `AbortSignal.timeout`, or the value passed to `abort(reason)`. Check
+`signal.aborted` rather than the error's name.
 
 A `TunnaError` also carries `stage`, the step of the server's request
 ladder that refused: 1 syntax, 2 authentication, 3 authorization,

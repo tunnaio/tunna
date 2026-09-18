@@ -5,14 +5,24 @@ export {
   ERROR_STAGE_NAME,
   isErrorCode,
 } from "./errors.generated.ts";
-export type { ErrorCode, ErrorStage, ErrorStageName } from "./errors.generated.ts";
+export type {
+  ErrorCode,
+  ErrorStage,
+  ErrorStageName,
+} from "./errors.generated.ts";
 
 export * as encode from "./encode.ts";
 export * as sign from "./sign.ts";
 export * as crc32c from "./crc32c.ts";
 export type { Key, SigningRequest, Mode } from "./sign.ts";
 export { Tunna } from "./client.ts";
-export type { TunnaOptions, UploadOptions, PresignOptions } from "./client.ts";
+export type {
+  TunnaOptions,
+  CallOptions,
+  UploadOptions,
+  PresignOptions,
+  ServerVersion,
+} from "./client.ts";
 export { TunnaError, TransportError } from "./errors.ts";
 export type { BucketRecord } from "./buckets.ts";
 export { withSecret } from "./api-keys.ts";

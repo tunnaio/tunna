@@ -1,7 +1,7 @@
 import { ApiKeys } from "./api-keys.ts";
 import { Buckets } from "./buckets.ts";
 import { encodePath, encodeQuery } from "./encode.ts";
-import { isErrorCode } from "./errors.generated.ts";
+import { isErrorCode, SPEC_VERSION } from "./errors.generated.ts";
 import { TransportError, TunnaError } from "./errors.ts";
 import { Objects, type ObjectRecord } from "./objects.ts";
 import {
@@ -32,18 +32,21 @@ interface Call {
   headers?: Record<string, string>;
   signedHeaders?: readonly string[];
   body?: BodyInit | null;
+  anonymous?: boolean; // send unsigned even when the client has a key
+  signal?: AbortSignal;
 }
 
-/** Client options. Without a key the client is anonymous: public reads only. */
+/** Client options. Without a key the client is anonymous: public reads only. publicUrl is the base presigned URLs are built on, for when browsers reach the server under another name than this client does; default url. */
 export interface TunnaOptions {
   url: string;
+  publicUrl?: string;
   key?: Key;
   fetch?: Fetch;
   now?: Now;
 }
 
-/** Options for upload: part size (default 8 MiB), parts in flight (default 8; each worker holds up to two parts), and a progress callback in bytes. */
-export interface UploadOptions {
+/** Options for upload: part size (default 8 MiB), parts in flight (default 8; each worker holds up to two parts), and a progress callback in bytes. Aborting the signal stops the parts in flight and aborts the session on the server. */
+export interface UploadOptions extends CallOptions {
   partSize?: number;
   concurrency?: number;
   contentType?: string;
@@ -60,6 +63,24 @@ export interface PresignOptions {
   headers?: Record<string, string>;
 }
 
+/** GET /-/version as it is on the wire (spec/wire.md 4). */
+interface WireServerVersion {
+  version: string;
+  spec: string;
+}
+
+/** The server's build and the spec it implements; compatible is whether that spec equals this package's SPEC_VERSION. */
+export interface ServerVersion {
+  version: string;
+  spec: string;
+  compatible: boolean;
+}
+
+/** Per-call options every method accepts. An aborted call rejects with the signal's reason (an AbortError by default), never a TransportError. */
+export interface CallOptions {
+  signal?: AbortSignal;
+}
+
 /** A tunna client: one base URL and one key, with the routes grouped as buckets, objects, apiKeys and uploads. */
 export class Tunna {
   readonly objects: Objects;
@@ -68,12 +89,15 @@ export class Tunna {
   readonly uploads: Uploads;
 
   readonly #base: string;
+  readonly #publicUrl: string;
   readonly #key: Key | undefined;
   readonly #now: Now;
   readonly #fetch: Fetch;
 
   constructor(options: TunnaOptions) {
     if (!options.url) throw new TypeError("TunnaOptions.url must not be empty");
+    if (options.publicUrl === "")
+      throw new TypeError("TunnaOptions.publicUrl must not be empty");
     if (options.key) {
       if (!options.key.id)
         throw new TypeError("TunnaOptions.key.id must not be empty");
@@ -82,6 +106,7 @@ export class Tunna {
     }
 
     this.#base = options.url.replace(/\/+$/, "");
+    this.#publicUrl = (options.publicUrl ?? options.url).replace(/\/+$/, "");
     this.#key = options.key;
     this.#fetch = options.fetch ?? defaultFetch.bind(globalThis);
     this.#now = options.now ?? defaultNow;
@@ -98,6 +123,9 @@ export class Tunna {
     source: Blob | Uint8Array<ArrayBuffer>,
     options?: UploadOptions,
   ): Promise<ObjectRecord> {
+    const callOpts: CallOptions = {
+      ...(options?.signal && { signal: options.signal }),
+    };
     const size = source instanceof Blob ? source.size : source.byteLength;
     if (size === 0) {
       return await this.objects.put(bucket, key, source, options);
@@ -114,6 +142,7 @@ export class Tunna {
     const count = Math.ceil(size / partSize);
     const sessionOptions: UploadCreateOptions = {
       partSize,
+      ...callOpts,
     };
     if (contentType) sessionOptions.contentType = contentType;
     if (metadata) sessionOptions.metadata = metadata;
@@ -141,6 +170,9 @@ export class Tunna {
     };
 
     const abortController = new AbortController();
+    const signal = callOpts.signal
+      ? AbortSignal.any([abortController.signal, callOpts.signal])
+      : abortController.signal;
     const worker = async (): Promise<void> => {
       let current = await prepare();
       while (current !== undefined) {
@@ -150,7 +182,9 @@ export class Tunna {
         let tries = 1;
         for (;;) {
           try {
-            const part = await this.uploads.putPart(session.id, n, bytes);
+            const part = await this.uploads.putPart(session.id, n, bytes, {
+              signal,
+            });
             checksums[n - 1] = part.checksum;
             sent += bytes.byteLength;
             onProgress?.(sent, size);
@@ -174,7 +208,10 @@ export class Tunna {
         Array.from({ length: Math.min(concurrency, count) }, () => worker()),
       );
 
-      return await this.uploads.complete(session.id, count, checksums);
+      return await this.uploads.complete(session.id, count, {
+        checksums,
+        ...callOpts,
+      });
     } catch (err) {
       try {
         await this.uploads.abort(session.id);
@@ -200,11 +237,37 @@ export class Tunna {
     }
 
     return (
-      this.#base +
+      this.#publicUrl +
       encodePath([options.bucket, options.key]) +
       "?" +
       (await presignQuery(req, this.#key, expires))
     );
+  }
+
+  /** Resolves when the server answers GET /-/health. Sent unsigned, so it tells whether the server is up, not whether the key is good. */
+  async health(options?: CallOptions): Promise<void> {
+    await this.request({
+      method: "GET",
+      path: ["-", "health"],
+      anonymous: true,
+      ...(options?.signal && { signal: options.signal }),
+    });
+  }
+
+  /** The server's version and spec, and whether this package speaks that spec. Sent unsigned. */
+  async version(options?: CallOptions): Promise<ServerVersion> {
+    const res = await this.request({
+      method: "GET",
+      path: ["-", "version"],
+      anonymous: true,
+      ...(options?.signal && { signal: options.signal }),
+    });
+    const body: WireServerVersion = await res.json();
+    return {
+      version: body.version,
+      spec: body.spec,
+      compatible: body.spec === SPEC_VERSION,
+    };
   }
 
   /** @internal */
@@ -214,7 +277,7 @@ export class Tunna {
       url += `?${encodeQuery(call.query)}`;
     }
     const headers = new Headers(call.headers);
-    if (this.#key) {
+    if (this.#key && !call.anonymous) {
       const now = this.#now();
       headers.set(HEADER_DATE, now.toString());
       headers.set("Authorization", await authorization(call, this.#key, now));
@@ -226,8 +289,10 @@ export class Tunna {
         body: call.body ?? null,
         headers,
         ...(call.body instanceof ReadableStream ? { duplex: "half" } : {}),
+        ...(call.signal && { signal: call.signal }),
       });
     } catch (err) {
+      if (call.signal?.aborted) throw err;
       throw new TransportError(`failed to fetch ${call.method} ${url}`, {
         cause: err,
       });

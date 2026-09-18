@@ -226,12 +226,52 @@ Tests read the spec by relative path; the package does not ship the spec.
 
 ### Package
 
-Name `tunna` on npm, ESM and CommonJS, `engines.node >= 20`, no runtime
+Name `tunna` on npm, ESM and CommonJS, `engines.node >= 20.3`, no runtime
 dependencies. Exports `Tunna`, `TunnaError`, `TransportError`, the
 generated `ErrorCode` type, the record types, and the low-level `sign`,
 `encode` and `crc32c` modules as subpath exports for callers that want the
 primitives without the client. `SPEC_VERSION` is exported and asserted
 against `GET /-/version` in the conformance test.
+
+### Method signatures (added 2026-09-19)
+
+Every method, in every group, takes its arguments in the same three
+parts, so a caller who has learned one group can guess the next:
+
+1. **Identifiers:** `name`, or `bucket, key`, or `id`.
+2. **The required payload, as its own parameter:** `body`, `bytes`,
+   `key`, `changes`, `parts`. What the method exists to send.
+3. **One trailing, optional `options` object:** optional settings plus
+   `signal` (`CallOptions`). Never a positional optional before it.
+
+So `buckets.patch(name, changes, options?)` and
+`apiKeys.patch(id, changes, options?)` have one shape, and
+`uploads.complete(id, parts, { checksums?, signal? })` never needs a
+placeholder `undefined`. `buckets.create(name, { public?, signal? })` keeps
+`public` in the options because it is optional with a default.
+`uploads.create` and `presign` take one required object because their
+required fields read better named than positional; they are the two
+exceptions, on purpose.
+
+It beat "the signal goes wherever an options object already is", which is
+what the first pass did: a payload that is serialized whole then carries
+the signal onto the wire (`JSON.stringify` of a signal is
+`{"signal":{}}`), and two `patch` methods ended up with different shapes.
+The rule that prevents both: a method that serializes its argument gets
+the signal as a separate parameter; a method that picks fields may share
+the object. Tests pin it (`the signal never reaches a request body`).
+
+An aborted call rejects with the signal's reason, never a
+`TransportError`, so the upload helper's retry does not retry a
+cancellation and `err.name`-based caller code keeps working; the helper's
+cleanup `abort` of the session is sent without the caller's signal.
+Probe 2026-09-19, Node 24 and Bun 1.4 against a server that never answers:
+`AbortSignal.timeout` gives `TimeoutError`, `abort()` gives `AbortError`,
+`abort(reason)` gives the reason.
+
+The shape of the rule carries to other languages; its spelling does not
+(SDKs share the contract, never the API shape). A Go client takes
+`context.Context` first and has no options object for cancellation at all.
 
 ### Fixture server
 
@@ -264,7 +304,8 @@ Harder:
 - `presign` and every request are asynchronous even when nothing is sent
   yet. Documented, not worked around.
 - Development needs Bun installed, and CI installs it (`oven-sh/setup-bun`)
-  next to Go. The package itself runs on Node 20 and later and in
+  next to Go. The package itself runs on Node 20.3 and later (the floor moved from
+  20.0 on 2026-09-19: `upload` combines signals with `AbortSignal.any`) and in
   browsers; the README states both.
 - Test files import from `bun:test`, so they run only under Bun. The Node
   smoke script is the one test that does not, on purpose.

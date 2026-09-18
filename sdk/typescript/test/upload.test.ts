@@ -29,6 +29,7 @@ function fakeServer(opts: { failPart?: { n: number; times: number; how: "throw" 
     const url = new URL(String(input));
     const path = url.pathname;
     const method = init?.method ?? "GET";
+    init?.signal?.throwIfAborted(); // a real fetch refuses an aborted signal
 
     if (method === "POST" && path === "/-/uploads") {
       const body = JSON.parse(String(init?.body));
@@ -188,5 +189,31 @@ describe("upload read-ahead", () => {
     const blob = new SlowBlob([generate(7, 8 * small)], 30, () => state.inFlight);
     await tunna.upload("b", "k", blob, { partSize: small, concurrency: 2 });
     expect(blob.maxReading).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("upload with an AbortSignal", () => {
+  test("stops without retrying, aborts the session, and rejects with the abort reason", async () => {
+    // The cleanup DELETE must go out without the caller's signal, or the
+    // fake refuses it like a real fetch would and the session is left behind.
+    const { tunna, state } = fakeServer({ holdMs: 20 });
+    const controller = new AbortController();
+
+    const err = await tunna
+      .upload("b", "k", generate(9, 6 * partSize), {
+        partSize,
+        concurrency: 2,
+        signal: controller.signal,
+        onProgress: (sent) => {
+          if (sent >= 2 * partSize) controller.abort();
+        },
+      })
+      .catch((e) => e);
+
+    expect(err.name).toBe("AbortError");
+    expect(state.completed).toBeUndefined();
+    expect(state.aborted).toBe(true);
+    expect(state.parts.size).toBeLessThan(6);
+    for (const tries of state.attempts.values()) expect(tries).toBe(1);
   });
 });

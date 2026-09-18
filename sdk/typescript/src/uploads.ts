@@ -1,4 +1,4 @@
-import type { Tunna } from "./client.ts";
+import type { CallOptions, Tunna } from "./client.ts";
 import { crc32c, encodeChecksum } from "./crc32c.ts";
 import { toObject, type ObjectRecord, type WireObject } from "./objects.ts";
 
@@ -39,7 +39,7 @@ export interface UploadPart {
 }
 
 /** Session options; partSize is fixed for the session and bounded by the server (default 5 MiB to 100 MiB). */
-export interface UploadCreateOptions {
+export interface UploadCreateOptions extends CallOptions {
   partSize: number;
   contentType?: string;
   metadata?: Record<string, string>;
@@ -89,6 +89,7 @@ export class Uploads {
         part_size: options.partSize,
         content_type: options.contentType ?? "application/octet-stream",
         metadata: options.metadata,
+        ...(options?.signal && { signal: options.signal }),
       }),
       headers: { "Content-Type": "application/json" },
     });
@@ -101,6 +102,7 @@ export class Uploads {
     id: string,
     n: number,
     bytes: Uint8Array<ArrayBuffer>,
+    options?: CallOptions,
   ): Promise<UploadPart> {
     const checksum = encodeChecksum(crc32c(bytes));
     const res = await this.#client.request({
@@ -109,16 +111,18 @@ export class Uploads {
       headers: { "X-Tunna-Checksum": checksum },
       signedHeaders: ["X-Tunna-Checksum"],
       body: bytes,
+      ...(options?.signal && { signal: options.signal }),
     });
     const body: WireUploadPart = await res.json();
     return toUploadPart(body);
   }
 
   /** The session with its received parts; resume is get, then send what is missing. */
-  async get(id: string): Promise<UploadSession> {
+  async get(id: string, options?: CallOptions): Promise<UploadSession> {
     const res = await this.#client.request({
       method: "GET",
       path: ["-", "uploads", id],
+      ...(options?.signal && { signal: options.signal }),
     });
     const body: WireUploadSession = await res.json();
     return toUploadSession(body);
@@ -128,26 +132,28 @@ export class Uploads {
   async complete(
     id: string,
     parts: number,
-    checksums?: string[],
+    options?: { checksums?: string[] } & CallOptions,
   ): Promise<ObjectRecord> {
     const res = await this.#client.request({
       method: "POST",
       path: ["-", "uploads", id, "complete"],
       body: JSON.stringify({
         parts,
-        checksums,
+        ...(options?.checksums && { checksums: options.checksums }),
       }),
       headers: { "Content-Type": "application/json" },
+      ...(options?.signal && { signal: options.signal }),
     });
     const body: WireObject = await res.json();
     return toObject(body);
   }
 
   /** Discards the session and its bytes. */
-  async abort(id: string): Promise<void> {
+  async abort(id: string, options?: CallOptions): Promise<void> {
     await this.#client.request({
       method: "DELETE",
       path: ["-", "uploads", id],
+      ...(options?.signal && { signal: options.signal }),
     });
   }
 }

@@ -1,4 +1,4 @@
-import type { Tunna } from "./client.ts";
+import type { CallOptions, Tunna } from "./client.ts";
 import { crc32c, encodeChecksum } from "./crc32c.ts";
 import { TransportError } from "./errors.ts";
 
@@ -42,18 +42,18 @@ export interface ObjectResponse {
 }
 
 /** Content type (default application/octet-stream) and user metadata for a PUT. */
-export interface ObjectPutOptions {
+export interface ObjectPutOptions extends CallOptions {
   contentType?: string;
   metadata?: Record<string, string>;
 }
 
 /** A byte range for GET: start inclusive, end inclusive when given. */
-export interface ObjectGetOptions {
+export interface ObjectGetOptions extends CallOptions {
   range?: { start: number; end?: number };
 }
 
 /** Listing filters: keys starting with prefix. limit is the page size (server default 1000), not a total: list still yields every object. */
-export interface ObjectListOptions {
+export interface ObjectListOptions extends CallOptions {
   prefix?: string;
   limit?: number;
 }
@@ -184,6 +184,7 @@ export class Objects {
       body: bytes,
       headers,
       signedHeaders: Object.keys(headers),
+      ...(options?.signal && { signal: options.signal }),
     });
     const record: WireObject = await res.json();
     return toObject(record);
@@ -207,6 +208,7 @@ export class Objects {
       method: "GET",
       path: [bucket, key],
       headers,
+      ...(options?.signal && { signal: options.signal }),
     });
 
     if (!res.body) {
@@ -221,22 +223,32 @@ export class Objects {
   }
 
   /** The object's headers without its body. */
-  async head(bucket: string, key: string): Promise<ObjectInfo> {
+  async head(
+    bucket: string,
+    key: string,
+    options?: CallOptions,
+  ): Promise<ObjectInfo> {
     const headers: Record<string, string> = {};
     const res = await this.#client.request({
       method: "HEAD",
       path: [bucket, key],
       headers,
+      ...(options?.signal && { signal: options.signal }),
     });
 
     return parseHeaders(res.headers);
   }
 
   /** Deletes an object; object_not_found when there is none. */
-  async delete(bucket: string, key: string): Promise<void> {
+  async delete(
+    bucket: string,
+    key: string,
+    options?: CallOptions,
+  ): Promise<void> {
     await this.#client.request({
       method: "DELETE",
       path: [bucket, key],
+      ...(options?.signal && { signal: options.signal }),
     });
   }
 
@@ -251,6 +263,9 @@ export class Objects {
     }
     if (options?.limit !== undefined) {
       base.limit = options.limit;
+    }
+    if (options?.signal !== undefined) {
+      base.signal = options.signal;
     }
 
     let after: string | undefined = undefined;
@@ -281,6 +296,7 @@ export class Objects {
       method: "GET",
       path: [bucket],
       query,
+      ...(options?.signal && { signal: options.signal }),
     });
     const body: WireListObjects = await res.json();
     const page: ObjectPage = { objects: body.objects.map(toObject) };

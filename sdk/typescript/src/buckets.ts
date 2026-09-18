@@ -1,4 +1,4 @@
-import type { Tunna } from "./client.ts";
+import type { CallOptions, Tunna } from "./client.ts";
 
 interface WireBucket {
   name: string;
@@ -30,20 +30,22 @@ export class Buckets {
   }
 
   /** Every bucket the key may read, in name order. */
-  async list(): Promise<BucketRecord[]> {
+  async list(options?: CallOptions): Promise<BucketRecord[]> {
     const res = await this.#client.request({
       method: "GET",
       path: ["-", "buckets"],
+      ...(options?.signal && { signal: options.signal }),
     });
     const body: { buckets: WireBucket[] } = await res.json();
     return body.buckets.map(toBucket);
   }
 
   /** One bucket; bucket_not_found when there is none. */
-  async get(name: string): Promise<BucketRecord> {
+  async get(name: string, options?: CallOptions): Promise<BucketRecord> {
     const res = await this.#client.request({
       method: "GET",
       path: ["-", "buckets", name],
+      ...(options?.signal && { signal: options.signal }),
     });
     return toBucket(await res.json());
   }
@@ -51,38 +53,42 @@ export class Buckets {
   /** Creates a bucket; bucket_exists when the name is taken. */
   async create(
     name: string,
-    options?: { public?: boolean },
+    options?: { public?: boolean } & CallOptions,
   ): Promise<BucketRecord> {
     const res = await this.#client.request({
       method: "PUT",
       path: ["-", "buckets", name],
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ public: options?.public ?? false }),
+      ...(options?.signal && { signal: options.signal }),
     });
     return toBucket(await res.json());
-  }
-
-  /** Deletes an empty bucket; bucket_not_empty while it holds objects or active uploads. */
-  async delete(name: string): Promise<void> {
-    await this.#client.request({
-      method: "DELETE",
-      path: ["-", "buckets", name],
-    });
   }
 
   /** Changes a bucket's settings (public) and returns the updated record; bucket_not_found when there is none. Admin keys only. */
   async patch(
     name: string,
-    options: { public: boolean },
+    changes: { public: boolean },
+    options?: CallOptions,
   ): Promise<BucketRecord> {
     const res = await this.#client.request({
       method: "PATCH",
       path: ["-", "buckets", name],
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        public: options.public,
+        public: changes.public,
       }),
+      ...(options?.signal && { signal: options.signal }),
     });
     return toBucket(await res.json());
+  }
+
+  /** Deletes an empty bucket; bucket_not_empty while it holds objects or active uploads. */
+  async delete(name: string, options?: CallOptions): Promise<void> {
+    await this.#client.request({
+      method: "DELETE",
+      path: ["-", "buckets", name],
+      ...(options?.signal && { signal: options.signal }),
+    });
   }
 }
