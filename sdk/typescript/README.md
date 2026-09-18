@@ -1,5 +1,8 @@
 # tunna (TypeScript)
 
+[![npm](https://img.shields.io/npm/v/tunna)](https://www.npmjs.com/package/tunna)
+[![ci](https://github.com/tunnaio/tunna/actions/workflows/ci.yml/badge.svg)](https://github.com/tunnaio/tunna/actions/workflows/ci.yml)
+
 Client for the [tunna](../../README.md) object store. Runs in browsers and
 in Node 20 or later with no dependencies: the code uses `fetch`,
 `crypto.subtle` and `ReadableStream` and nothing else. ESM and CommonJS

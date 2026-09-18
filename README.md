@@ -3,15 +3,17 @@
 # tunna
 
 [![ci](https://github.com/tunnaio/tunna/actions/workflows/ci.yml/badge.svg)](https://github.com/tunnaio/tunna/actions/workflows/ci.yml)
+[![server release](https://img.shields.io/github/v/release/tunnaio/tunna?include_prereleases&filter=v*&label=server)](https://github.com/tunnaio/tunna/releases)
+[![npm](https://img.shields.io/npm/v/tunna?label=npm)](https://www.npmjs.com/package/tunna)
 
 A small, fast object storage server in Go, with a wire contract written as
 data and SDKs tested against it. *Tunna* is Swedish for barrel.
 
 **Status: pre-release.** The server implements the whole contract (spec
 `0.1.0-draft`): buckets, objects, multipart uploads, signed and presigned
-requests, scoped API keys, CORS. The TypeScript SDK covers every route. No
-release has been cut and the wire may still change before `0.1.0`; the
-`-draft` suffix comes off at the first release.
+requests, scoped API keys, CORS. The TypeScript SDK covers every route.
+Releases so far are alphas, and the wire may still change before `0.1.0`;
+the `-draft` suffix comes off the spec at that release.
 
 ## What it is
 
