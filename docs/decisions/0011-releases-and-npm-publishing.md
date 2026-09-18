@@ -121,7 +121,10 @@ files under the package. No source, no tests, no spec.
 | TypeScript SDK | `sdk/typescript/v<semver>` | `0.1.0-alpha.N` under dist-tag `alpha` while the spec is draft; `0.1.0` with the first stable spec; independent after |
 | Spec | none; `spec/VERSION` | ADR in `spec/README.md` |
 
-A release is: bump the version in `package.json`, commit as
+A release is: bump the version in `package.json` (`bun run bump` for the
+next prerelease; it passes `--no-git-tag-version`, because the tag
+`bun pm version` would otherwise create is `v<version>`, which is the
+server's pattern and would start a server release), commit as
 `sdk/typescript <version>`, tag `sdk/typescript/v<version>` on that
 commit, push the tag, then approve the staged version on npmjs.com. The
 maintainer does all five.

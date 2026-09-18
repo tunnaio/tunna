@@ -1,6 +1,6 @@
 {
   "name": "tunna",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "Client for the tunna object store: signer, presigned URLs, concurrent uploads. Browser and Node, no dependencies.",
   "keywords": [
     "object-storage",
@@ -81,7 +81,8 @@
     "test": "bun test",
     "gen": "bun run scripts/gen-errors.ts",
     "smoke": "bun run build && node test/node-smoke.mjs && node test/node-smoke.cjs",
-    "prepublishOnly": "bun run check && bun test && bun run build"
+    "prepublishOnly": "bun run check && bun test && bun run build",
+    "bump": "bun pm version prerelease --no-git-tag-version"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",
