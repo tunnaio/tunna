@@ -47,7 +47,7 @@ for amd64 and arm64, with `alpha` pointing at the newest prerelease and
 
 ```
 docker run -p 8000:8000 -v tunna-data:/data \
-  -e TUNNA_BOOTSTRAP_KEY=tk_admin:change-me ghcr.io/tunnaio/tunna:0.1.0-alpha.1
+  -e TUNNA_BOOTSTRAP_KEY=tk_admin:change-me ghcr.io/tunnaio/tunna:0.1.0-alpha.3
 ```
 
 The image and each release binary carry a build provenance attestation:
