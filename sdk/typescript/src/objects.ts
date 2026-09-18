@@ -52,10 +52,15 @@ export interface ObjectGetOptions {
   range?: { start: number; end?: number };
 }
 
-/** Listing filters: keys starting with prefix, pages of limit (server default 1000). */
+/** Listing filters: keys starting with prefix. limit is the page size (server default 1000), not a total: list still yields every object. */
 export interface ObjectListOptions {
   prefix?: string;
   limit?: number;
+}
+
+/** The listing filters plus a cursor: after is the next of the previous page. */
+export interface ObjectPageOptions extends ObjectListOptions {
+  after?: string;
 }
 
 /** What a GET or HEAD reports in headers; size is the whole object's even for a range. */
@@ -66,6 +71,12 @@ export interface ObjectInfo {
   checksum: string;
   lastModified: Date;
   metadata: Record<string, string>;
+}
+
+/** One page of a listing, in key order; next is present only when there are more objects. */
+export interface ObjectPage {
+  objects: ObjectRecord[];
+  next?: string;
 }
 
 function parseHeaders(headers: Headers): ObjectInfo {
@@ -234,6 +245,27 @@ export class Objects {
     bucket: string,
     options?: ObjectListOptions,
   ): AsyncGenerator<ObjectRecord, void, unknown> {
+    const base: ObjectPageOptions = {};
+    if (options?.prefix !== undefined) {
+      base.prefix = options.prefix;
+    }
+    if (options?.limit !== undefined) {
+      base.limit = options.limit;
+    }
+
+    let after: string | undefined = undefined;
+    do {
+      const page = await this.page(
+        bucket,
+        after === undefined ? base : { ...base, after },
+      );
+      yield* page.objects;
+      after = page.next;
+    } while (after);
+  }
+
+  /** One page of at most limit objects, as one request; pass next back as after for the following page. For UIs that page by hand. */
+  async page(bucket: string, options?: ObjectPageOptions): Promise<ObjectPage> {
     const query: [string, string][] = [];
     if (options?.prefix !== undefined) {
       query.push(["prefix", options.prefix]);
@@ -241,20 +273,20 @@ export class Objects {
     if (options?.limit !== undefined) {
       query.push(["limit", options.limit.toString()]);
     }
+    if (options?.after !== undefined) {
+      query.push(["after", options.after]);
+    }
 
-    let next: string | undefined = undefined;
-    do {
-      const page = next ? [...query, ["after", next] as const] : query;
-      const res = await this.#client.request({
-        method: "GET",
-        path: [bucket],
-        query: page,
-      });
-      const body: WireListObjects = await res.json();
-      for (const obj of body.objects) {
-        yield toObject(obj);
-      }
-      next = body.next;
-    } while (next);
+    const res = await this.#client.request({
+      method: "GET",
+      path: [bucket],
+      query,
+    });
+    const body: WireListObjects = await res.json();
+    const page: ObjectPage = { objects: body.objects.map(toObject) };
+    if (body.next !== undefined) {
+      page.next = body.next;
+    }
+    return page;
   }
 }

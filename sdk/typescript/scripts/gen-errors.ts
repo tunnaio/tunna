@@ -40,9 +40,26 @@ export function render(): string {
   }
   lines.push("};");
   lines.push("");
-  lines.push("/** Ladder stage for each code (ADR-0004): 1 syntax, 2 authentication, 3 authorization, 4 validation, 5 body, 6 state. */");
-  lines.push("export const ERROR_STAGE: Readonly<Record<ErrorCode, number>> = {");
+  const stageList = table.stages.map((s) => `${s.stage} ${s.name}`).join(", ");
+  lines.push(`/** A stage of the request ladder (ADR-0004): ${stageList}. */`);
+  lines.push(`export type ErrorStage = ${table.stages.map((s) => s.stage).join(" | ")};`);
+  lines.push("");
+  lines.push("/** The spec's name for a stage. */");
+  lines.push(`export type ErrorStageName = ${table.stages.map((s) => JSON.stringify(s.name)).join(" | ")};`);
+  lines.push("");
+  lines.push("/** The name of each stage, for messages and grouping. */");
+  lines.push("export const ERROR_STAGE_NAME: Readonly<Record<ErrorStage, ErrorStageName>> = {");
+  for (const s of table.stages) {
+    lines.push(`  ${s.stage}: ${JSON.stringify(s.name)},`);
+  }
+  lines.push("};");
+  lines.push("");
+  lines.push("/** The ladder stage each code is answered at. */");
+  lines.push("export const ERROR_STAGE: Readonly<Record<ErrorCode, ErrorStage>> = {");
   for (const e of table.errors) {
+    if (!table.stages.some((s) => s.stage === e.stage)) {
+      throw new Error(`spec/errors.json: ${e.code} names stage ${e.stage}, which is not in stages`);
+    }
     lines.push(`  ${e.code}: ${e.stage},`);
   }
   lines.push("};");

@@ -1,8 +1,10 @@
-import type { ErrorCode } from "./errors.generated.ts";
+import type { ErrorCode, ErrorStage } from "./errors.generated.ts";
+import { ERROR_STAGE } from "./errors.generated.ts";
 
-/** The server answered with an error body: code from spec/errors.json, its status, message and details. */
+/** The server answered with an error body: code from spec/errors.json, its status, message and details, and the ladder stage the request failed at (name it with ERROR_STAGE_NAME). */
 export class TunnaError extends Error {
   readonly code: ErrorCode;
+  readonly stage: ErrorStage;
   readonly status: number;
   readonly details: Readonly<Record<string, unknown>> | undefined;
 
@@ -16,6 +18,7 @@ export class TunnaError extends Error {
     super(message, options);
     this.name = "TunnaError";
     this.code = code;
+    this.stage = ERROR_STAGE[code];
     this.status = status;
     this.details = details;
   }

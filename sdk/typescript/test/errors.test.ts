@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { outputPath, render } from "../scripts/gen-errors.ts";
-import { ERROR_STAGE, ERROR_STATUS, SPEC_VERSION, isErrorCode } from "../src/errors.generated.ts";
+import { ERROR_STAGE, ERROR_STAGE_NAME, ERROR_STATUS, SPEC_VERSION, isErrorCode, type ErrorStage } from "../src/errors.generated.ts";
 import { loadSpec, specVersion } from "./vectors.ts";
 
 describe("src/errors.generated.ts", () => {
@@ -16,10 +16,24 @@ describe("src/errors.generated.ts", () => {
       expect(isErrorCode(e.code)).toBe(true);
       if (isErrorCode(e.code)) {
         expect(ERROR_STATUS[e.code]).toBe(e.status);
-        expect(ERROR_STAGE[e.code]).toBe(e.stage);
+        expect<number>(ERROR_STAGE[e.code]).toBe(e.stage);
       }
     }
     expect(isErrorCode("not_a_code")).toBe(false);
+  });
+
+  test("stages are the literal union from the spec's stage list", () => {
+    const table = loadSpec<{ stages: { stage: number; name: string }[] }>("errors.json");
+    // Compile-time half: a stage outside the union must not typecheck.
+    const six: ErrorStage = 6;
+    // @ts-expect-error 7 is not a stage
+    const seven: ErrorStage = 7;
+    void six, seven;
+    // Runtime half: every stage in the table is one the spec lists.
+    const listed = new Set(table.stages.map((s) => s.stage));
+    for (const stage of Object.values(ERROR_STAGE)) expect(listed.has(stage)).toBe(true);
+    // And every stage has the spec's name, nothing more, nothing less.
+    expect<Record<number, string>>(ERROR_STAGE_NAME).toEqual(Object.fromEntries(table.stages.map((s) => [s.stage, s.name])));
   });
 
   test("carries the spec version", () => {

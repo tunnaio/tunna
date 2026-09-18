@@ -198,3 +198,35 @@ describe("buckets.patch", () => {
     expect(JSON.parse(String(seen[0]!.init.body))).toEqual({ public: false });
   });
 });
+
+describe("objects.page", () => {
+  const wire = (key: string) => ({ bucket: "photos", key, size: 1, content_type: "text/plain", checksum: "crc32c=AAAAAA==", created_at: 1_788_912_000 });
+
+  test("returns one page and the cursor, without following it", async () => {
+    const { tunna, seen } = client(() => json(200, { objects: [wire("a"), wire("b")], next: "b" }));
+    const page = await tunna.objects.page("photos", { prefix: "a/", limit: 2 });
+    expect(seen).toHaveLength(1);
+    // encodeQuery sorts pairs by name, so limit comes before prefix.
+    expect(seen[0]!.url).toBe("http://store.test/photos?limit=2&prefix=a%2F");
+    expect(page.objects.map((o) => o.key)).toEqual(["a", "b"]);
+    expect(page.objects[0]!.createdAt).toEqual(new Date(1_788_912_000_000));
+    expect(page.next).toBe("b");
+  });
+
+  test("after resumes from a cursor, and the last page has no next", async () => {
+    const { tunna, seen } = client(() => json(200, { objects: [wire("c")] }));
+    const page = await tunna.objects.page("photos", { after: "b" });
+    expect(seen[0]!.url).toBe("http://store.test/photos?after=b");
+    expect(page.next).toBeUndefined();
+    expect("next" in page).toBe(false);
+  });
+});
+
+describe("TunnaError.stage", () => {
+  test("carries the ladder stage of its code (ADR-0004)", async () => {
+    const { tunna } = client(() => json(403, { error: { code: "forbidden", message: "no" } }));
+    const err = await tunna.buckets.get("photos").catch((e) => e);
+    expect(err).toBeInstanceOf(TunnaError);
+    expect(err.stage).toBe(3);
+  });
+});

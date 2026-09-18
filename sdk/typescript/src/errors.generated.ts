@@ -71,8 +71,24 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   unavailable: 503,
 };
 
-/** Ladder stage for each code (ADR-0004): 1 syntax, 2 authentication, 3 authorization, 4 validation, 5 body, 6 state. */
-export const ERROR_STAGE: Readonly<Record<ErrorCode, number>> = {
+/** A stage of the request ladder (ADR-0004): 1 syntax, 2 authentication, 3 authorization, 4 validation, 5 body, 6 state. */
+export type ErrorStage = 1 | 2 | 3 | 4 | 5 | 6;
+
+/** The spec's name for a stage. */
+export type ErrorStageName = "syntax" | "authentication" | "authorization" | "validation" | "body" | "state";
+
+/** The name of each stage, for messages and grouping. */
+export const ERROR_STAGE_NAME: Readonly<Record<ErrorStage, ErrorStageName>> = {
+  1: "syntax",
+  2: "authentication",
+  3: "authorization",
+  4: "validation",
+  5: "body",
+  6: "state",
+};
+
+/** The ladder stage each code is answered at. */
+export const ERROR_STAGE: Readonly<Record<ErrorCode, ErrorStage>> = {
   malformed_request: 1,
   unknown_route: 1,
   method_not_allowed: 1,

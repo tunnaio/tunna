@@ -42,6 +42,10 @@ for await (const obj of tunna.objects.list("photos", { prefix: "2026/" })) {
   console.log(obj.key, obj.size);
 }
 
+// Or one page at a time, for a UI with its own "next" button.
+const page = await tunna.objects.page("photos", { limit: 50 });
+if (page.next) await tunna.objects.page("photos", { limit: 50, after: page.next });
+
 // Large files: numbered parts, several in flight, per-part checksums.
 await tunna.upload("photos", "big.bin", file, {
   partSize: 8 << 20, // the default
@@ -65,7 +69,7 @@ Every signing call is asynchronous because HMAC comes from `crypto.subtle`.
 | Group | Methods |
 |-------|---------|
 | `tunna.buckets` | `list`, `get`, `create`, `patch`, `delete` (all but `list` and `get` need an admin key) |
-| `tunna.objects` | `put`, `get`, `head`, `delete`, `list` (async iterator) |
+| `tunna.objects` | `put`, `get`, `head`, `delete`, `list` (async iterator over every page), `page` (one page and its cursor) |
 | `tunna.apiKeys` | `list`, `get`, `create`, `patch`, `rotate`, `delete` (admin key only) |
 | `tunna.uploads` | `create`, `putPart`, `get`, `complete`, `abort` (the raw routes) |
 | `tunna.upload` | the concurrent uploader on top of them |
@@ -74,6 +78,12 @@ Every signing call is asynchronous because HMAC comes from `crypto.subtle`.
 Errors: `TunnaError` is the server's answer, with `code` typed as the
 union generated from `spec/errors.json`; `TransportError` is no answer or
 one outside the contract, with the underlying error as `cause`.
+
+A `TunnaError` also carries `stage`, the step of the server's request
+ladder that refused: 1 syntax, 2 authentication, 3 authorization,
+4 validation, 5 body, 6 state. It groups codes without a table of your own
+(`err.stage === 2 || err.stage === 3` is "sign in or ask for access"), and
+`ERROR_STAGE_NAME[err.stage]` gives the name.
 
 Subpath exports `tunna/sign`, `tunna/encode` and `tunna/crc32c` give the
 primitives without the client, for anyone building on the wire contract

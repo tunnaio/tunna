@@ -2,9 +2,10 @@ export {
   SPEC_VERSION,
   ERROR_STATUS,
   ERROR_STAGE,
+  ERROR_STAGE_NAME,
   isErrorCode,
 } from "./errors.generated.ts";
-export type { ErrorCode } from "./errors.generated.ts";
+export type { ErrorCode, ErrorStage, ErrorStageName } from "./errors.generated.ts";
 
 export * as encode from "./encode.ts";
 export * as sign from "./sign.ts";
@@ -31,6 +32,8 @@ export type {
   ObjectPutOptions,
   ObjectGetOptions,
   ObjectListOptions,
+  ObjectPage,
+  ObjectPageOptions,
 } from "./objects.ts";
 export type {
   UploadSession,
