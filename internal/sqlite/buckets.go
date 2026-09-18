@@ -89,4 +89,21 @@ func (d *DB) DeleteBucket(ctx context.Context, name string) error {
 	return nil
 }
 
+// UpdateBucket implements tunna.BucketStore. Zero affected rows is
+// ErrNotFound.
+func (d *DB) UpdateBucket(ctx context.Context, b tunna.Bucket) error {
+	res, err := d.db.ExecContext(ctx, "UPDATE buckets SET public = ? WHERE name = ?", b.Public, b.Name)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return tunna.ErrNotFound
+	}
+	return nil
+}
+
 var _ tunna.BucketStore = (*DB)(nil)

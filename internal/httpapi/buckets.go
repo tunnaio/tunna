@@ -166,3 +166,56 @@ func (h *handler) deleteBucket(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// patchBucket answers PATCH /-/buckets/{bucket} with the updated record.
+// public is required; it is the only setting a bucket has so far.
+func (h *handler) patchBucket(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("bucket")
+	if err := tunna.ValidateBucketName(name); err != nil {
+		writeError(w, codeInvalidBucketName, err.Error(), nil)
+		return
+	}
+	var body struct {
+		Public *bool `json:"public"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		details := map[string]any{}
+		if typeErr, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
+			details["name"] = typeErr.Field
+		}
+		writeError(w, codeInvalidParameter, "body must be a JSON object with boolean public", details)
+		return
+	}
+	if body.Public == nil {
+		writeError(w, codeInvalidParameter, "public is required", map[string]any{
+			"name": "public",
+		})
+		return
+	}
+	b, err := h.buckets.GetBucket(r.Context(), name)
+	switch {
+	case errors.Is(err, tunna.ErrNotFound):
+		writeError(w, codeBucketNotFound, "bucket not found", map[string]any{
+			"bucket": name,
+		})
+		return
+
+	case err != nil:
+		writeError(w, codeInternal, "bucket update failed", nil)
+		return
+	}
+	b.Public = *body.Public
+	err = h.buckets.UpdateBucket(r.Context(), b)
+	switch {
+	case errors.Is(err, tunna.ErrNotFound):
+		writeError(w, codeBucketNotFound, "bucket not found", map[string]any{
+			"bucket": name,
+		})
+		return
+
+	case err != nil:
+		writeError(w, codeInternal, "bucket update failed", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, toBucketRecord(b))
+}

@@ -542,6 +542,338 @@
           }
         }
       ]
+    },
+    {
+      "name": "bucket-patch-public",
+      "description": "Flipping public on an existing bucket changes what anonymous readers get, both ways.",
+      "decision": "wire.md 4.1",
+      "fixtures": [
+        "alice",
+        "photos"
+      ],
+      "steps": [
+        {
+          "name": "private-before",
+          "request": {
+            "method": "GET",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none"
+          },
+          "expect": {
+            "error": "unauthenticated"
+          }
+        },
+        {
+          "name": "patch",
+          "request": {
+            "method": "PATCH",
+            "path": [
+              "-",
+              "buckets",
+              "photos"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "public": true
+              }
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "name": "photos",
+              "public": true
+            },
+            "json_present": [
+              "/created_at"
+            ]
+          }
+        },
+        {
+          "name": "public-after",
+          "request": {
+            "method": "GET",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none"
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "name": "patch-back",
+          "request": {
+            "method": "PATCH",
+            "path": [
+              "-",
+              "buckets",
+              "photos"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "public": false
+              }
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "public": false
+            }
+          }
+        },
+        {
+          "name": "private-again",
+          "request": {
+            "method": "GET",
+            "path": [
+              "photos",
+              "hello.txt"
+            ],
+            "auth": "none"
+          },
+          "expect": {
+            "error": "unauthenticated"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bucket-patch-keeps-created-at",
+      "decision": "wire.md 4.1",
+      "fixtures": [
+        "alice",
+        "empty"
+      ],
+      "steps": [
+        {
+          "name": "before",
+          "request": {
+            "method": "GET",
+            "path": [
+              "-",
+              "buckets",
+              "empty"
+            ],
+            "auth": {
+              "key": "alice"
+            }
+          },
+          "expect": {
+            "status": 200
+          },
+          "capture": {
+            "created": "/created_at"
+          }
+        },
+        {
+          "name": "patch",
+          "request": {
+            "method": "PATCH",
+            "path": [
+              "-",
+              "buckets",
+              "empty"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "public": true
+              }
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": {
+              "created_at": "{{created}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "bucket-patch-not-found",
+      "decision": "wire.md 4.1",
+      "fixtures": [
+        "alice"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "PATCH",
+            "path": [
+              "-",
+              "buckets",
+              "nope"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "public": true
+              }
+            }
+          },
+          "expect": {
+            "error": "bucket_not_found"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bucket-patch-requires-admin",
+      "decision": "ADR-0008",
+      "fixtures": [
+        "writer",
+        "photos"
+      ],
+      "steps": [
+        {
+          "request": {
+            "method": "PATCH",
+            "path": [
+              "-",
+              "buckets",
+              "photos"
+            ],
+            "auth": {
+              "key": "writer"
+            },
+            "body": {
+              "json": {
+                "public": true
+              }
+            }
+          },
+          "expect": {
+            "error": "forbidden"
+          }
+        },
+        {
+          "request": {
+            "method": "PATCH",
+            "path": [
+              "-",
+              "buckets",
+              "photos"
+            ],
+            "auth": "none",
+            "body": {
+              "json": {
+                "public": true
+              }
+            }
+          },
+          "expect": {
+            "error": "unauthenticated"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bucket-patch-invalid",
+      "description": "Stage 4: a missing field, a wrong type, a body that is not JSON.",
+      "decision": "wire.md 4.1",
+      "fixtures": [
+        "alice",
+        "photos"
+      ],
+      "steps": [
+        {
+          "name": "missing-public",
+          "request": {
+            "method": "PATCH",
+            "path": [
+              "-",
+              "buckets",
+              "photos"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {}
+            }
+          },
+          "expect": {
+            "error": "invalid_parameter",
+            "json": {
+              "error": {
+                "details": {
+                  "name": "public"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "wrong-type",
+          "request": {
+            "method": "PATCH",
+            "path": [
+              "-",
+              "buckets",
+              "photos"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "body": {
+              "json": {
+                "public": "yes"
+              }
+            }
+          },
+          "expect": {
+            "error": "invalid_parameter",
+            "json": {
+              "error": {
+                "details": {
+                  "name": "public"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "not-json",
+          "request": {
+            "method": "PATCH",
+            "path": [
+              "-",
+              "buckets",
+              "photos"
+            ],
+            "auth": {
+              "key": "alice"
+            },
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "text": "nope"
+            }
+          },
+          "expect": {
+            "error": "invalid_parameter"
+          }
+        }
+      ]
     }
   ]
 }

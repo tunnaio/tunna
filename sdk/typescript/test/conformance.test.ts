@@ -153,7 +153,13 @@ for (const file of readdirSync(casesDir)
 
 async function runCase(c: Case): Promise<void> {
   const captured = new Map<string, string>();
+  const numbers = new Map<string, string>(); // captures that were JSON numbers
   const sub = (s: string) => substitute(s, captured);
+  // A captured number keeps its type where the placeholder is the whole string.
+  const subJSON = (s: string) => {
+    for (const [k, v] of numbers) s = s.replaceAll(`"{{${k}}}"`, v);
+    return sub(s);
+  };
 
   for (const [i, s] of c.steps.entries()) {
     const name = s.name ?? `step-${i + 1}`;
@@ -228,10 +234,12 @@ async function runCase(c: Case): Promise<void> {
     });
     const respBody = new Uint8Array(await res.arrayBuffer());
 
-    check(at, s.expect, res, respBody, sub);
+    check(at, s.expect, res, respBody, subJSON);
 
     for (const [key, from] of Object.entries(s.capture ?? {})) {
-      captured.set(key, capture(from, res, respBody));
+      const val = capture(from, res, respBody);
+      captured.set(key, val.text);
+      if (val.isNumber) numbers.set(key, val.text);
     }
   }
 }
@@ -381,12 +389,12 @@ function pointer(v: unknown, ptr: string): unknown {
   return cur;
 }
 
-function capture(from: string, res: Response, body: Uint8Array): string {
+function capture(from: string, res: Response, body: Uint8Array): { text: string; isNumber: boolean } {
   if (from.startsWith("header:"))
-    return res.headers.get(from.slice("header:".length)) ?? "";
+    return { text: res.headers.get(from.slice("header:".length)) ?? "", isNumber: false };
   const v = parseJSON(body);
   if (v === undefined) throw new Error(`capture ${from}: body is not JSON`);
   const val = pointer(v, from);
   if (val === undefined) throw new Error(`capture ${from}: not found`);
-  return typeof val === "string" ? val : JSON.stringify(val);
+  return { text: typeof val === "string" ? val : JSON.stringify(val), isNumber: typeof val === "number" };
 }

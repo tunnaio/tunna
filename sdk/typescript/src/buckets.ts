@@ -69,4 +69,20 @@ export class Buckets {
       path: ["-", "buckets", name],
     });
   }
+
+  /** Changes a bucket's settings (public) and returns the updated record; bucket_not_found when there is none. Admin keys only. */
+  async patch(
+    name: string,
+    options: { public: boolean },
+  ): Promise<BucketRecord> {
+    const res = await this.#client.request({
+      method: "PATCH",
+      path: ["-", "buckets", name],
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        public: options.public,
+      }),
+    });
+    return toBucket(await res.json());
+  }
 }

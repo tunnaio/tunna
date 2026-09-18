@@ -117,7 +117,7 @@ admin key with the name `bootstrap`.
 | object PUT, DELETE; upload initiate, part, query, complete, abort | `write` on the session's bucket |
 | bucket GET | `read` on the bucket |
 | bucket list | any key; the list is filtered to buckets the key can read; admin sees all |
-| bucket create, delete | admin |
+| bucket create, patch (the public flag), delete | admin |
 | every `/-/keys` route | admin |
 
 "On the bucket" means the key is admin, or its scopes hold that bucket or

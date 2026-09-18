@@ -56,6 +56,10 @@ An API key is a public **key id** and a **secret**. The server generates both
 and returns the secret once. Key ids are safe to log; secrets and signatures
 are not.
 
+A disabled key answers exactly as a key that does not exist: `unknown_key`,
+in both the header and the presigned form. The answer does not reveal whether
+an id was ever issued.
+
 ### 3.2 Canonical request
 
 Lines joined with `\n`, no trailing newline:
@@ -129,7 +133,7 @@ and fails if they are bad.
 Stage 3 decides what an authenticated key may do. Two kinds of key:
 
 - **admin**: everything, including every route under `/-/keys` and bucket
-  create and delete.
+  create, patch and delete.
 - **scoped**: a map from bucket name to `read` or `write`; `write`
   includes `read`; the entry `*` applies to every bucket. Scoped keys
   cannot manage keys or create and delete buckets.
@@ -140,7 +144,7 @@ Stage 3 decides what an authenticated key may do. Two kinds of key:
 | `read` on the bucket | object GET and HEAD, object listing, bucket GET |
 | `write` on the bucket | object PUT and DELETE; upload initiate, part, query, complete, abort (checked against the session's bucket) |
 | any key | bucket list, filtered to the buckets the key can read; admin sees all |
-| admin | bucket create and delete; every `/-/keys` route |
+| admin | bucket create, patch and delete; every `/-/keys` route |
 
 A key without the level answers `forbidden` before the bucket or object is
 looked up, so the response does not depend on whether the resource exists.
@@ -189,14 +193,16 @@ A bucket record on the wire:
 |---------|------|----------|
 | `PUT /-/buckets/{bucket}` | Optional JSON `{"public": bool}`; absent body or absent field means `false` | `201` with the bucket record |
 | `GET /-/buckets/{bucket}` | none | `200` with the bucket record |
+| `PATCH /-/buckets/{bucket}` | JSON `{"public": bool}`; the field is required | `200` with the updated bucket record |
 | `GET /-/buckets` | none | `200 {"buckets": [record, ...]}` ordered by name; `[]` when none |
 | `DELETE /-/buckets/{bucket}` | none | `204`, empty body |
 
 Faults, in ladder order: an invalid name is `invalid_bucket_name` (stage 4,
 checked before the store is consulted); a body that is not JSON or has a
 field of the wrong type is `invalid_parameter` with `details.name` naming
-the field (stage 4); a taken name on create is `bucket_exists` and an
-unknown name on get or delete is `bucket_not_found` (stage 6). Deleting a
+the field (stage 4), and so is a patch body without `public`; a taken name on
+create is `bucket_exists` and an unknown name on get, patch or delete is
+`bucket_not_found` (stage 6). Deleting a
 bucket that still holds objects or active uploads is `bucket_not_empty`.
 
 ### 4.2 Keys [ADR-0008]

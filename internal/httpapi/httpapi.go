@@ -101,6 +101,7 @@ func New(o Options) http.Handler {
 	mux.HandleFunc("GET /-/buckets/{bucket}", chain(h.getBucket, requireAuth, requireAccess(tunna.Read)))
 	mux.HandleFunc("PUT /-/buckets/{bucket}", chain(h.createBucket, requireAuth, requireAdmin))
 	mux.HandleFunc("DELETE /-/buckets/{bucket}", chain(h.deleteBucket, requireAuth, requireAdmin))
+	mux.HandleFunc("PATCH /-/buckets/{bucket}", chain(h.patchBucket, requireAuth, requireAdmin))
 
 	// uploads routes
 	mux.HandleFunc("POST /-/uploads", chain(h.createUpload, requireAuth))

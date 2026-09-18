@@ -225,6 +225,7 @@ func unsupported(c conformanceCase, fx fixtures.File) string {
 
 func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map[string]int, fx fixtures.File) {
 	captured := map[string]string{}
+	numbers := map[string]string{} // captures that were JSON numbers
 	for i, s := range c.Steps {
 		name := s.Name
 		if name == "" {
@@ -340,17 +341,26 @@ func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map
 
 		// Captures apply inside the expectation too, so a later step can
 		// expect the id an earlier one created.
+		// A captured number keeps its type where the placeholder is the
+		// whole string: "{{name}}" becomes the bare number.
 		if s.Expect.JSON != nil {
-			s.Expect.JSON = json.RawMessage(sub(string(s.Expect.JSON)))
+			want := string(s.Expect.JSON)
+			for k, v := range numbers {
+				want = strings.ReplaceAll(want, `"{{`+k+`}}"`, v)
+			}
+			s.Expect.JSON = json.RawMessage(sub(want))
 		}
 		check(t, name, s.Expect, resp, respBody, statusOf)
 
 		for key, from := range s.Capture {
-			val, err := capture(from, resp, respBody)
+			val, isNumber, err := capture(from, resp, respBody)
 			if err != nil {
 				t.Fatalf("%s: capture %s: %v", name, key, err)
 			}
 			captured[key] = val
+			if isNumber {
+				numbers[key] = val
+			}
 		}
 	}
 }
@@ -597,24 +607,26 @@ func pointer(v any, ptr string) (any, error) {
 	return v, nil
 }
 
-func capture(from string, resp *http.Response, body []byte) (string, error) {
+// capture reads one value from the response as text and reports whether it
+// was a JSON number.
+func capture(from string, resp *http.Response, body []byte) (string, bool, error) {
 	if h, ok := strings.CutPrefix(from, "header:"); ok {
-		return resp.Header.Get(h), nil
+		return resp.Header.Get(h), false, nil
 	}
 	var v any
 	if err := json.Unmarshal(body, &v); err != nil {
-		return "", err
+		return "", false, err
 	}
 	val, err := pointer(v, from)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	switch x := val.(type) {
 	case string:
-		return x, nil
+		return x, false, nil
 	case float64:
-		return strconv.FormatFloat(x, 'f', -1, 64), nil
+		return strconv.FormatFloat(x, 'f', -1, 64), true, nil
 	default:
-		return fmt.Sprint(x), nil
+		return fmt.Sprint(x), false, nil
 	}
 }

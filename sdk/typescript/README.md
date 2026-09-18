@@ -41,8 +41,8 @@ for await (const obj of tunna.objects.list("photos", { prefix: "2026/" })) {
 
 // Large files: numbered parts, several in flight, per-part checksums.
 await tunna.upload("photos", "big.bin", file, {
-  partSize: 8 << 20,
-  concurrency: 4,
+  partSize: 8 << 20, // the default
+  concurrency: 8,    // the default
   onProgress: (sent, total) => console.log(sent / total),
 });
 
@@ -61,7 +61,7 @@ Every signing call is asynchronous because HMAC comes from `crypto.subtle`.
 
 | Group | Methods |
 |-------|---------|
-| `tunna.buckets` | `list`, `get`, `create`, `delete` |
+| `tunna.buckets` | `list`, `get`, `create`, `patch`, `delete` (all but `list` and `get` need an admin key) |
 | `tunna.objects` | `put`, `get`, `head`, `delete`, `list` (async iterator) |
 | `tunna.apiKeys` | `list`, `get`, `create`, `patch`, `rotate`, `delete` (admin key only) |
 | `tunna.uploads` | `create`, `putPart`, `get`, `complete`, `abort` (the raw routes) |

@@ -41,7 +41,7 @@
         "capture": {
           "type": "object",
           "additionalProperties": { "type": "string" },
-          "description": "name → JSON pointer (RFC 6901) into the response body, or 'header:<Name>' for a response header. Captured values substitute {{name}} in later steps."
+          "description": "name → JSON pointer (RFC 6901) into the response body, or 'header:<Name>' for a response header. Captured values substitute {{name}} in later steps. In expect.json a captured number keeps its type where the placeholder is the whole string: \"{{name}}\" stands for the number."
         }
       }
     },

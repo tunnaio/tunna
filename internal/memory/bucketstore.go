@@ -77,5 +77,18 @@ func (s *BucketStore) DeleteBucket(_ context.Context, name string) error {
 	return nil
 }
 
+// UpdateBucket implements tunna.BucketStore.
+func (s *BucketStore) UpdateBucket(_ context.Context, b tunna.Bucket) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old, exists := s.buckets[b.Name]
+	if !exists {
+		return tunna.ErrNotFound
+	}
+	old.Public = b.Public
+	s.buckets[b.Name] = old
+	return nil
+}
+
 // Compile-time check that *BucketStore satisfies the interface.
 var _ tunna.BucketStore = (*BucketStore)(nil)

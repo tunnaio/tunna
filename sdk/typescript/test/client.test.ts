@@ -177,3 +177,24 @@ describe("construction", () => {
     expect(() => new Tunna({ url: "" })).toThrow(/url/);
   });
 });
+
+describe("buckets.patch", () => {
+  test("sends only the public flag and maps the record back", async () => {
+    const { tunna, seen } = client(() => json(200, { name: "photos", public: true, created_at: 1_788_912_000 }));
+    const b = await tunna.buckets.patch("photos", { public: true });
+    expect(seen[0]!.init.method).toBe("PATCH");
+    expect(seen[0]!.url).toBe("http://store.test/-/buckets/photos");
+    expect(new Headers(seen[0]!.init.headers).get("Content-Type")).toBe("application/json");
+    expect(JSON.parse(String(seen[0]!.init.body))).toEqual({ public: true });
+    expect(b).toEqual({ name: "photos", public: true, createdAt: new Date(1_788_912_000_000) });
+  });
+
+  test("a whole record passed back in still sends only public", async () => {
+    // Types are open: a BucketRecord satisfies { public: boolean } through a
+    // variable, which is exactly what a console does after buckets.get.
+    const { tunna, seen } = client(() => json(200, { name: "photos", public: false, created_at: 1 }));
+    const record = { name: "photos", public: false, createdAt: new Date(0) };
+    await tunna.buckets.patch("photos", record);
+    expect(JSON.parse(String(seen[0]!.init.body))).toEqual({ public: false });
+  });
+});

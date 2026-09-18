@@ -146,4 +146,35 @@ func BucketStore(t *testing.T, newStore BucketStoreFactory) {
 			t.Errorf("re-create after delete: %v", err)
 		}
 	})
+	t.Run("update replaces public and keeps created_at", func(t *testing.T) {
+		s := newStore(t)
+		if err := s.CreateBucket(ctx, tunna.Bucket{Name: "photos", Public: false, CreatedAt: at}); err != nil {
+			t.Fatalf("CreateBucket: %v", err)
+		}
+		changed := tunna.Bucket{Name: "photos", Public: true, CreatedAt: at.Add(time.Hour)} // CreatedAt must be ignored
+		if err := s.UpdateBucket(ctx, changed); err != nil {
+			t.Fatalf("UpdateBucket: %v", err)
+		}
+		got, err := s.GetBucket(ctx, "photos")
+		if err != nil {
+			t.Fatalf("GetBucket: %v", err)
+		}
+		if !got.Public {
+			t.Error("Public = false after update to true")
+		}
+		if !got.CreatedAt.Equal(at) {
+			t.Errorf("CreatedAt = %v, want the original %v; update must not touch it", got.CreatedAt, at)
+		}
+	})
+
+	t.Run("update unknown is ErrNotFound and creates nothing", func(t *testing.T) {
+		s := newStore(t)
+		if err := s.UpdateBucket(ctx, tunna.Bucket{Name: "ghost", Public: true, CreatedAt: at}); !errors.Is(err, tunna.ErrNotFound) {
+			t.Fatalf("err = %v, want ErrNotFound", err)
+		}
+		if _, err := s.GetBucket(ctx, "ghost"); !errors.Is(err, tunna.ErrNotFound) {
+			t.Error("UpdateBucket of an unknown name created it")
+		}
+	})
+
 }

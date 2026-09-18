@@ -36,12 +36,28 @@ func ValidateBucketName(name string) error {
 	return nil
 }
 
+// BucketStore is what the core needs from wherever buckets are kept. Declared
+// here, by the consumer; adapters satisfy it without naming it (ADR-0005).
 type BucketStore interface {
+	// CreateBucket stores a new bucket with every field as given, CreatedAt
+	// included. It returns ErrConflict when the name is taken, and the
+	// stored bucket is left as it was.
 	CreateBucket(ctx context.Context, b Bucket) error
 
+	// GetBucket returns the bucket with the given name. It returns
+	// ErrNotFound and a zero Bucket when there is none.
 	GetBucket(ctx context.Context, name string) (Bucket, error)
 
+	// ListBuckets returns every bucket, ordered by name, as a slice the
+	// caller may modify. An empty store gives an empty list, not an error.
 	ListBuckets(ctx context.Context) ([]Bucket, error)
 
+	// DeleteBucket removes the bucket. It returns ErrNotFound when there is
+	// none. Whether the bucket must be empty first is the caller's rule.
 	DeleteBucket(ctx context.Context, name string) error
+
+	// UpdateBucket replaces Public on the bucket with b's name. CreatedAt is
+	// kept from the stored record. It returns ErrNotFound when there is no
+	// such bucket, and creates nothing.
+	UpdateBucket(ctx context.Context, b Bucket) error
 }

@@ -276,6 +276,14 @@ To revisit:
 - Whether `upload` should resume a session after a page reload, which
   needs the session id persisted by the caller; the wire already allows
   it.
+- A presign provider as an alternative to a key: `new Tunna({ url, presign })`
+  where `presign(req)` returns a URL for one request, so a browser page
+  runs every method, `objects.put`, `upload` per part, reads on private
+  buckets, without holding a key; the page's provider calls the app's own
+  backend, which holds the key and decides policy, and mints with a
+  general `presignRequest({ method, path, headers, expiresIn })`. One
+  branch in `request`; one round trip per request. Wanted 2026-09-17 for a
+  browser console; the wire already allows it (spec/wire.md 6).
 - Adaptive concurrency in `upload`: start low and add workers while
   throughput rises. Measured 2026-09-17 on a 500 Mbit link: with
   read-ahead, 4 in flight gave 37 MiB/s, 8 and 16 both about 43, so the
