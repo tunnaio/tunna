@@ -99,7 +99,7 @@ same either way, because the host is not signed.
 | `tunna.uploads` | `create`, `putPart`, `get`, `complete`, `abort` (the raw routes) |
 | `tunna.upload` | the concurrent uploader on top of them |
 | `tunna.presign` | a presigned URL for one request |
-| `tunna.health`, `tunna.version` | is the server up, and does it speak this package's spec (`compatible`); both sent unsigned |
+| `tunna.health`, `tunna.version`, `tunna.limits` | is the server up; does it speak this package's spec (`compatible`); its part size bounds, presign lifetime and other limits. All sent unsigned |
 
 Errors: `TunnaError` is the server's answer, with `code` typed as the
 union generated from `spec/errors.json`; `TransportError` is no answer or

@@ -14,6 +14,10 @@ import (
 	"github.com/tunnaio/tunna/sig"
 )
 
+// maxListLimit is the largest listing page, and the default when the
+// request names none (spec/wire.md 7 and 11).
+const maxListLimit = 1000
+
 // maxBodyLength is the single-request object cap (spec/wire.md 11). It
 // belongs in Options once limits are configurable; a constant until then.
 const maxBodyLength = 100 << 20
@@ -323,9 +327,9 @@ func (h *handler) listObjects(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		limit = min(l, 1000)
+		limit = min(l, maxListLimit)
 	} else {
-		limit = 1000
+		limit = maxListLimit
 	}
 
 	list, err := h.objects.ListObjects(r.Context(), bucket, prefix, after, limit)

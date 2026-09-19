@@ -22,6 +22,7 @@ export type {
   UploadOptions,
   PresignOptions,
   ServerVersion,
+  ServerLimits,
 } from "./client.ts";
 export { TunnaError, TransportError } from "./errors.ts";
 export type { BucketRecord } from "./buckets.ts";

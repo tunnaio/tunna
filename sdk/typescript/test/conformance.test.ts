@@ -180,7 +180,7 @@ async function runCase(c: Case): Promise<void> {
     if (s.request.body) {
       const b = s.request.body;
       if (b.json !== undefined) {
-        body = sub(JSON.stringify(b.json));
+        body = subJSON(JSON.stringify(b.json));
         if (
           !Object.keys(headers).some((h) => h.toLowerCase() === "content-type")
         )

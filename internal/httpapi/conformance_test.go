@@ -232,6 +232,15 @@ func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map
 			name = fmt.Sprintf("step-%d", i+1)
 		}
 		sub := func(in string) string { return substitute(in, captured) }
+		// subJSON is sub for JSON text. A captured number keeps its type
+		// where the placeholder is the whole string: "{{name}}" becomes the
+		// bare number, in a request body as in an expectation.
+		subJSON := func(in string) string {
+			for k, v := range numbers {
+				in = strings.ReplaceAll(in, `"{{`+k+`}}"`, v)
+			}
+			return sub(in)
+		}
 
 		// Decoded inputs, after substitution.
 		segments := make([]string, len(s.Request.Path))
@@ -289,7 +298,7 @@ func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map
 		if b := s.Request.Body; b != nil {
 			switch {
 			case b.JSON != nil:
-				reqBody = strings.NewReader(sub(string(b.JSON)))
+				reqBody = strings.NewReader(subJSON(string(b.JSON)))
 			case b.Text != nil:
 				reqBody = strings.NewReader(sub(*b.Text))
 			case b.Hex != nil:
@@ -341,14 +350,8 @@ func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map
 
 		// Captures apply inside the expectation too, so a later step can
 		// expect the id an earlier one created.
-		// A captured number keeps its type where the placeholder is the
-		// whole string: "{{name}}" becomes the bare number.
 		if s.Expect.JSON != nil {
-			want := string(s.Expect.JSON)
-			for k, v := range numbers {
-				want = strings.ReplaceAll(want, `"{{`+k+`}}"`, v)
-			}
-			s.Expect.JSON = json.RawMessage(sub(want))
+			s.Expect.JSON = json.RawMessage(subJSON(string(s.Expect.JSON)))
 		}
 		check(t, name, s.Expect, resp, respBody, statusOf)
 

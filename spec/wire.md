@@ -124,9 +124,9 @@ presigned-form credentials is `malformed_request`.
 
 ### 3.5 Anonymous routes
 
-Health and version, and reads on buckets marked public, need no credentials.
-A request that presents credentials to an anonymous route is still verified
-and fails if they are bad.
+Health, version and limits, and reads on buckets marked public, need no
+credentials. A request that presents credentials to an anonymous route is
+still verified and fails if they are bad.
 
 ### 3.6 Authorization [ADR-0008]
 
@@ -141,7 +141,7 @@ Stage 3 decides what an authenticated key may do. Two kinds of key:
 
 | Requires | Routes |
 |----------|--------|
-| nothing | health, version, and reads and listing on a public bucket |
+| nothing | health, version, limits, and reads and listing on a public bucket |
 | `read` on the bucket | object GET and HEAD, object listing, bucket GET |
 | `write` on the bucket | object PUT and DELETE; upload initiate, part, query, complete, abort (checked against the session's bucket) |
 | any key | bucket list, filtered to the buckets the key can read; admin sees all. The key's own record, `GET /-/keys/self` |
@@ -167,6 +167,7 @@ answers `unknown_route`. Both use the JSON error body from section 9.
 |-----------------|---------|------|
 | `GET /-/health` | Liveness. `200 {"status":"ok"}` | anonymous |
 | `GET /-/version` | Server version and spec version | anonymous |
+| `GET /-/limits` | This deployment's limits (section 11) | anonymous |
 | `GET /-/buckets` | List buckets visible to the key | key |
 | `PUT /-/buckets/{bucket}` | Create a bucket | key |
 | `GET /-/buckets/{bucket}` | Bucket metadata and settings | key |
@@ -591,6 +592,36 @@ refuses on its own.
 
 Every configurable value is logged at startup.
 
+### 11.1 Reading the limits
+
+`GET /-/limits` answers `200` with the values in force on this deployment,
+so a client can choose a valid part size or presign lifetime without
+hardcoding a default that an operator may have changed:
+
+```json
+{ "object_size_max": 104857600, "part_size_min": 5242880,
+  "part_size_max": 104857600, "parts_max": 10000, "list_limit_max": 1000,
+  "key_length_max": 1024, "presign_lifetime_max_seconds": 604800,
+  "upload_expiry_seconds": 86400, "clock_skew_seconds": 900 }
+```
+
+Sizes are bytes and durations are seconds, all integers; a duration's field
+name ends in `_seconds`. The route is anonymous, like health and version:
+nothing in it is secret, and the client that needs it most, a browser page
+uploading through presigned URLs, holds no key. The values are the ones the
+ladder enforces, not a copy: `invalid_part_size` reports the same `min`
+and `max` in its `details`.
+
+It answers "how much", not "what can this server do". Which routes and
+fields exist is the spec version's business (`GET /-/version`); two
+servers on one spec version differ only in these numbers. A client must
+ignore fields it does not know, so a later limit is an addition, not a
+break.
+
 ## Open items in this document
 
 - Whether small-object PUT returns the same metadata shape as complete.
+- Section 11 lists a user metadata total of 8 KiB that no stage enforces
+  yet, and marks limits configurable that have no configuration variable
+  yet (`docs/configuration.md`). `GET /-/limits` reports only limits that
+  are enforced, so the metadata row is absent from it until it is.

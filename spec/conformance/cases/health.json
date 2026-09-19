@@ -72,6 +72,81 @@
           "expect": { "status": 200, "json": { "spec": "0.1.0-draft" } }
         }
       ]
+    },
+    {
+      "name": "limits-anonymous-defaults",
+      "description": "The deployment's limits, anonymous like health and version. The fixture server runs on the defaults of wire.md 11: bytes and seconds, integers.",
+      "decision": "wire.md 11",
+      "fixtures": [],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "limits"], "auth": "none" },
+          "expect": {
+            "status": 200,
+            "headers": { "Content-Type": "application/json" },
+            "json": {
+              "object_size_max": 104857600,
+              "part_size_min": 5242880,
+              "part_size_max": 104857600,
+              "parts_max": 10000,
+              "list_limit_max": 1000,
+              "key_length_max": 1024,
+              "presign_lifetime_max_seconds": 604800,
+              "upload_expiry_seconds": 86400,
+              "clock_skew_seconds": 900
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "limits-are-the-enforced-values",
+      "description": "What the route reports is what stage 4 enforces, not a second copy of the numbers: the reported bounds are accepted exactly, and invalid_part_size names the same two values.",
+      "decision": "wire.md 11",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "name": "read",
+          "request": { "method": "GET", "path": ["-", "limits"], "auth": "none" },
+          "expect": { "status": 200 },
+          "capture": { "min": "/part_size_min", "max": "/part_size_max" }
+        },
+        {
+          "name": "min-accepted",
+          "request": { "method": "POST", "path": ["-", "uploads"], "auth": { "key": "alice" }, "body": { "json": { "bucket": "empty", "key": "at-min.bin", "part_size": "{{min}}" } } },
+          "expect": { "status": 201, "json": { "part_size": "{{min}}" } }
+        },
+        {
+          "name": "max-accepted",
+          "request": { "method": "POST", "path": ["-", "uploads"], "auth": { "key": "alice" }, "body": { "json": { "bucket": "empty", "key": "at-max.bin", "part_size": "{{max}}" } } },
+          "expect": { "status": 201, "json": { "part_size": "{{max}}" } }
+        },
+        {
+          "name": "error-names-the-same-bounds",
+          "request": { "method": "POST", "path": ["-", "uploads"], "auth": { "key": "alice" }, "body": { "json": { "bucket": "empty", "key": "small.bin", "part_size": 1024 } } },
+          "expect": { "error": "invalid_part_size", "json": { "error": { "details": { "min": "{{min}}", "max": "{{max}}" } } } }
+        }
+      ]
+    },
+    {
+      "name": "limits-is-an-ordinary-anonymous-route",
+      "description": "Credentials that are presented are still verified, and only GET and HEAD exist.",
+      "decision": "ADR-0004",
+      "fixtures": ["alice"],
+      "steps": [
+        {
+          "request": { "method": "GET", "path": ["-", "limits"], "auth": { "key": "alice", "corrupt_signature": true } },
+          "expect": { "error": "bad_signature" }
+        },
+        {
+          "request": { "method": "GET", "path": ["-", "limits"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "json_present": ["/part_size_min"] }
+        },
+        {
+          "request": { "method": "POST", "path": ["-", "limits"], "auth": "none" },
+          "expect": { "error": "method_not_allowed", "headers": { "Allow": "GET, HEAD" } }
+        }
+      ]
     }
   ]
 }

@@ -23,11 +23,15 @@ type Object struct {
 	CreatedAt   time.Time
 }
 
+// MaxKeyLength is the longest object key, in bytes (spec/wire.md 1). Part
+// of the contract, not configuration.
+const MaxKeyLength = 1024
+
 // ValidateObjectKey applies the key rule from spec/wire.md section 1: 1 to
 // 1024 bytes of valid UTF-8 with no NUL. The returned error wraps ErrInvalid.
 func ValidateObjectKey(key string) error {
-	if len(key) < 1 || len(key) > 1024 {
-		return fmt.Errorf("%w: object key must be 1 to 1024 bytes, got %d", ErrInvalid, len(key))
+	if len(key) < 1 || len(key) > MaxKeyLength {
+		return fmt.Errorf("%w: object key must be 1 to %d bytes, got %d", ErrInvalid, MaxKeyLength, len(key))
 	}
 
 	if valid := utf8.ValidString(key); !valid {

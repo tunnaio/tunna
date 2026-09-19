@@ -427,3 +427,46 @@ describe("apiKeys.self", () => {
     expect("scopes" in me).toBe(false);
   });
 });
+
+describe("limits", () => {
+  const wire = {
+    object_size_max: 104_857_600,
+    part_size_min: 5_242_880,
+    part_size_max: 104_857_600,
+    parts_max: 10_000,
+    list_limit_max: 1000,
+    key_length_max: 1024,
+    presign_lifetime_max_seconds: 604_800,
+    upload_expiry_seconds: 86_400,
+    clock_skew_seconds: 900,
+  };
+
+  test("reads /-/limits unsigned and maps it to camelCase, sizes in bytes and durations in seconds", async () => {
+    const { tunna, seen } = client(() => json(200, wire));
+    const { signal } = new AbortController();
+    const limits = await tunna.limits({ signal });
+    expect(seen[0]!.url).toBe("http://store.test/-/limits");
+    expect(seen[0]!.init.signal).toBe(signal);
+    expect(new Headers(seen[0]!.init.headers).has("Authorization")).toBe(false);
+    expect(limits).toEqual({
+      objectSizeMax: 104_857_600,
+      partSizeMin: 5_242_880,
+      partSizeMax: 104_857_600,
+      partsMax: 10_000,
+      listLimitMax: 1000,
+      keyLengthMax: 1024,
+      presignLifetimeMaxSeconds: 604_800,
+      uploadExpirySeconds: 86_400,
+      clockSkewSeconds: 900,
+    });
+  });
+
+  test("a field this package does not know is dropped, not an error", async () => {
+    // wire.md 11.1: a later limit is an addition, so an older SDK must keep working.
+    const { tunna } = client(() => json(200, { ...wire, copy_size_max: 1 }));
+    const limits = await tunna.limits();
+    expect("copySizeMax" in limits).toBe(false);
+    expect("copy_size_max" in limits).toBe(false);
+    expect(limits.partSizeMin).toBe(5_242_880);
+  });
+});

@@ -95,6 +95,7 @@ func New(o Options) http.Handler {
 
 	mux.HandleFunc("GET /-/health", h.health)
 	mux.HandleFunc("GET /-/version", h.version)
+	mux.HandleFunc("GET /-/limits", h.limits)
 
 	// buckets routes
 	mux.HandleFunc("GET /-/buckets", chain(h.listBuckets, requireAuth))
@@ -177,6 +178,36 @@ func (h *handler) version(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"version": h.serverVersion,
 		"spec":    tunna.SpecVersion,
+	})
+}
+
+// limitsRecord is the wire shape of GET /-/limits (spec/wire.md 11.1):
+// sizes in bytes, durations in seconds.
+type limitsRecord struct {
+	ObjectSizeMax             int64 `json:"object_size_max"`
+	PartSizeMin               int64 `json:"part_size_min"`
+	PartSizeMax               int64 `json:"part_size_max"`
+	PartsMax                  int64 `json:"parts_max"`
+	ListLimitMax              int64 `json:"list_limit_max"`
+	KeyLengthMax              int64 `json:"key_length_max"`
+	PresignLifetimeMaxSeconds int64 `json:"presign_lifetime_max_seconds"`
+	UploadExpirySeconds       int64 `json:"upload_expiry_seconds"`
+	ClockSkewSeconds          int64 `json:"clock_skew_seconds"`
+}
+
+// limits answers GET /-/limits. Anonymous. Every value is read from the
+// variable that enforces it, never a second copy of the number.
+func (h *handler) limits(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, limitsRecord{
+		PartSizeMin:               h.partSizeMin,
+		PartSizeMax:               h.partSizeMax,
+		PartsMax:                  h.maxParts,
+		PresignLifetimeMaxSeconds: int64(h.maxPresign.Seconds()),
+		UploadExpirySeconds:       int64(h.uploadTTL.Seconds()),
+		ClockSkewSeconds:          int64(h.skew.Seconds()),
+		ListLimitMax:              maxListLimit,
+		ObjectSizeMax:             maxBodyLength,
+		KeyLengthMax:              tunna.MaxKeyLength,
 	})
 }
 

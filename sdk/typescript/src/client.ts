@@ -76,6 +76,32 @@ export interface ServerVersion {
   compatible: boolean;
 }
 
+/** GET /-/limits as it is on the wire (spec/wire.md 11.1). */
+interface WireServerLimits {
+  object_size_max: number;
+  part_size_min: number;
+  part_size_max: number;
+  parts_max: number;
+  list_limit_max: number;
+  key_length_max: number;
+  presign_lifetime_max_seconds: number;
+  upload_expiry_seconds: number;
+  clock_skew_seconds: number;
+}
+
+/** This deployment's limits: sizes in bytes, durations in seconds. They are what the server enforces, so an operator's change shows here. */
+export interface ServerLimits {
+  objectSizeMax: number;
+  partSizeMin: number;
+  partSizeMax: number;
+  partsMax: number;
+  listLimitMax: number;
+  keyLengthMax: number;
+  presignLifetimeMaxSeconds: number;
+  uploadExpirySeconds: number;
+  clockSkewSeconds: number;
+}
+
 /** Per-call options every method accepts. An aborted call rejects with the signal's reason (an AbortError by default), never a TransportError. */
 export interface CallOptions {
   signal?: AbortSignal;
@@ -267,6 +293,28 @@ export class Tunna {
       version: body.version,
       spec: body.spec,
       compatible: body.spec === SPEC_VERSION,
+    };
+  }
+
+  /** The server's limits, for choosing a valid partSize or presign lifetime without hardcoding a default. Sent unsigned; fields a newer server adds are dropped. */
+  async limits(options?: CallOptions): Promise<ServerLimits> {
+    const res = await this.request({
+      method: "GET",
+      path: ["-", "limits"],
+      anonymous: true,
+      ...(options?.signal && { signal: options.signal }),
+    });
+    const body: WireServerLimits = await res.json();
+    return {
+      clockSkewSeconds: body.clock_skew_seconds,
+      keyLengthMax: body.key_length_max,
+      listLimitMax: body.list_limit_max,
+      objectSizeMax: body.object_size_max,
+      partSizeMax: body.part_size_max,
+      partSizeMin: body.part_size_min,
+      partsMax: body.parts_max,
+      presignLifetimeMaxSeconds: body.presign_lifetime_max_seconds,
+      uploadExpirySeconds: body.upload_expiry_seconds,
     };
   }
 
