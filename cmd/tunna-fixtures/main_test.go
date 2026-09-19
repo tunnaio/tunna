@@ -121,12 +121,13 @@ func TestFixtureServerServesResetsAndIsolates(t *testing.T) {
 		t.Errorf("GET /-/health through the fixture server: %d", resp.StatusCode)
 	}
 	// Only POST /reset is the control route; a GET falls through to the API,
-	// where "reset" is just a bucket name that does not exist, so the control
-	// plane is invisible otherwise.
+	// where "reset" is just a bucket name, so the control plane is invisible
+	// otherwise. Without a key the API answers unauthenticated for any bucket
+	// that is not public, existing or not (ADR-0008).
 	resp, _ = client.Get(url + "/reset")
 	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != 404 || !strings.Contains(string(body), "bucket_not_found") {
-		t.Errorf("GET /reset: %d %s, want the API's bucket_not_found", resp.StatusCode, body)
+	if resp.StatusCode != 401 || !strings.Contains(string(body), "unauthenticated") {
+		t.Errorf("GET /reset: %d %s, want the API's unauthenticated", resp.StatusCode, body)
 	}
 }
