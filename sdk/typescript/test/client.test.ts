@@ -366,3 +366,27 @@ describe("publicUrl", () => {
     expect(() => new Tunna({ url: "http://tunna:8000", publicUrl: "" })).toThrow(/publicUrl/);
   });
 });
+
+describe("apiKeys.self", () => {
+  test("reads the caller's own record from /-/keys/self, as a scoped key", async () => {
+    const { tunna, seen } = client(() =>
+      json(200, { id: "tk_reader", name: "reader", admin: false, scopes: { photos: "read" }, disabled: false, created_at: 1_788_912_000 }),
+    );
+    const { signal } = new AbortController();
+    const me = await tunna.apiKeys.self({ signal });
+    expect(seen[0]!.init.method).toBe("GET");
+    expect(seen[0]!.url).toBe("http://store.test/-/keys/self");
+    expect(seen[0]!.init.signal).toBe(signal);
+    expect(new Headers(seen[0]!.init.headers).has("Authorization")).toBe(true);
+    expect(me).toEqual({ id: "tk_reader", name: "reader", admin: false, scopes: { photos: "read" }, disabled: false, createdAt: new Date(1_788_912_000_000) });
+    // The union narrows on admin, so scopes is reachable only on a scoped key.
+    if (!me.admin) expect(me.scopes.photos).toBe("read");
+  });
+
+  test("an admin record has no scopes", async () => {
+    const { tunna } = client(() => json(200, { id: "tk_alice", name: "alice", admin: true, disabled: false, created_at: 1 }));
+    const me = await tunna.apiKeys.self();
+    expect(me.admin).toBe(true);
+    expect("scopes" in me).toBe(false);
+  });
+});

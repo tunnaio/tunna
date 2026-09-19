@@ -67,6 +67,11 @@ try {
 // Or a deadline on any single call.
 await tunna.objects.head("photos", "2026/a.jpg", { signal: AbortSignal.timeout(5_000) });
 
+// What may this key do? Works for any key; the type narrows on admin.
+const me = await tunna.apiKeys.self();
+if (me.admin) { /* key management, every bucket */ }
+else console.log(Object.keys(me.scopes)); // the buckets a scoped key can reach
+
 // A URL a browser can PUT to for the next hour, without holding the key.
 const url = await tunna.presign({ method: "PUT", bucket: "photos", key: "b.jpg", expiresIn: 3600 });
 
@@ -90,7 +95,7 @@ same either way, because the host is not signed.
 |-------|---------|
 | `tunna.buckets` | `list`, `get`, `create`, `patch`, `delete` (all but `list` and `get` need an admin key) |
 | `tunna.objects` | `put`, `get`, `head`, `delete`, `list` (async iterator over every page), `page` (one page and its cursor) |
-| `tunna.apiKeys` | `list`, `get`, `create`, `patch`, `rotate`, `delete` (admin key only) |
+| `tunna.apiKeys` | `list`, `get`, `create`, `patch`, `rotate`, `delete` (admin key only); `self` (any key: its own record) |
 | `tunna.uploads` | `create`, `putPart`, `get`, `complete`, `abort` (the raw routes) |
 | `tunna.upload` | the concurrent uploader on top of them |
 | `tunna.presign` | a presigned URL for one request |

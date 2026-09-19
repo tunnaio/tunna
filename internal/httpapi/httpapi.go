@@ -123,6 +123,7 @@ func New(o Options) http.Handler {
 	mux.HandleFunc("PATCH /-/keys/{id}", chain(h.patchKey, requireAuth, requireAdmin))
 	mux.HandleFunc("DELETE /-/keys/{id}", chain(h.deleteKey, requireAuth, requireAdmin))
 	mux.HandleFunc("POST /-/keys/{id}/rotate", chain(h.rotateKey, requireAuth, requireAdmin))
+	mux.HandleFunc("GET /-/keys/self", chain(h.getSelfKey, requireAuth))
 
 	mux.HandleFunc("/", h.notFound)
 

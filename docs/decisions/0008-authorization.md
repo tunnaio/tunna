@@ -118,7 +118,8 @@ admin key with the name `bootstrap`.
 | bucket GET | `read` on the bucket |
 | bucket list | any key; the list is filtered to buckets the key can read; admin sees all |
 | bucket create, patch (the public flag), delete | admin |
-| every `/-/keys` route | admin |
+| `GET /-/keys/self` (added 2026-09-20) | any key |
+| every other `/-/keys` route | admin |
 
 "On the bucket" means the key is admin, or its scopes hold that bucket or
 `*` at the level or higher. Upload routes are checked against the
@@ -152,6 +153,7 @@ every URL it signed, immediately (ADR-0003).
 | `POST /-/keys` | `{"name", "admin", "scopes"}` | `201` with the record **including the secret**, the only time it is shown |
 | `GET /-/keys` | | `200 {"keys": [record without secret, ...]}` by id |
 | `GET /-/keys/{id}` | | `200` record without secret |
+| `GET /-/keys/self` | | `200` the caller's own record without secret (added 2026-09-20, below) |
 | `PATCH /-/keys/{id}` | any of `{"name", "admin", "scopes", "disabled"}` | `200` updated record |
 | `POST /-/keys/{id}/rotate` | | `200` record **with the new secret**; the old one stops verifying at once |
 | `DELETE /-/keys/{id}` | | `204` |
@@ -201,6 +203,32 @@ To revisit:
   row in the vectors, without changing the model.
 - Whether presigned URLs should be able to carry a scope narrower than the
   key. Not needed while the signature already binds method and path.
+
+### Amendment 2026-09-20: a key may read its own record
+
+`GET /-/keys/self` answers any authenticated key with its own record,
+never the secret. The first consumer, a management console, could not
+tell an admin key from a scoped one except by calling an admin route and
+reading `forbidden`, and could not show a scoped key's buckets at all.
+
+It beat three alternatives:
+
+- **Let a key `GET /-/keys/{its own id}`.** The authorization rule for one
+  route would then depend on comparing the path with the caller, a second
+  kind of check next to "admin or not". `self` keeps the id route purely
+  admin, and the rule for the new route is "any key", which the ladder
+  already has (bucket list).
+- **Put `admin` and `scopes` in `GET /-/version` or a header on every
+  response.** Couples an anonymous route to the caller, or spends bytes on
+  every response for something read once per session.
+- **Leave it to trial and error.** What the console did. It costs a failed
+  request per question and cannot list scopes.
+
+The handler answers from the key stage 2 already loaded, so it adds no
+lookup. A disabled key never sees `"disabled": true` from it, since it
+fails stage 2 as `unknown_key`; the field stays in the record because the
+record has one shape everywhere. `self` is an alias under `GET` only.
+Conformance: the seven `keys-self-*` cases.
 
 ## Action items
 

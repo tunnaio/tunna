@@ -132,19 +132,20 @@ and fails if they are bad.
 
 Stage 3 decides what an authenticated key may do. Two kinds of key:
 
-- **admin**: everything, including every route under `/-/keys` and bucket
-  create, patch and delete.
+- **admin**: everything, including the key management routes under
+  `/-/keys` and bucket create, patch and delete.
 - **scoped**: a map from bucket name to `read` or `write`; `write`
   includes `read`; the entry `*` applies to every bucket. Scoped keys
-  cannot manage keys or create and delete buckets.
+  cannot manage keys or create and delete buckets. Any key can read its own
+  record (`GET /-/keys/self`, section 4.2).
 
 | Requires | Routes |
 |----------|--------|
 | nothing | health, version, and reads and listing on a public bucket |
 | `read` on the bucket | object GET and HEAD, object listing, bucket GET |
 | `write` on the bucket | object PUT and DELETE; upload initiate, part, query, complete, abort (checked against the session's bucket) |
-| any key | bucket list, filtered to the buckets the key can read; admin sees all |
-| admin | bucket create, patch and delete; every `/-/keys` route |
+| any key | bucket list, filtered to the buckets the key can read; admin sees all. The key's own record, `GET /-/keys/self` |
+| admin | bucket create, patch and delete; every other `/-/keys` route |
 
 A key without the level answers `forbidden` before the bucket or object is
 looked up, so the response does not depend on whether the resource exists.
@@ -223,12 +224,23 @@ else. `scopes` is omitted when `admin` is true.
 | `POST /-/keys` | `{"name", "admin", "scopes"}`; `name` required, 1 to 128 bytes; `admin` defaults false; `scopes` required unless admin, and forbidden with it | `201` with the record plus `secret` |
 | `GET /-/keys` | none | `200 {"keys": [record, ...]}` ordered by id |
 | `GET /-/keys/{id}` | none | `200` record |
+| `GET /-/keys/self` | none | `200` record of the key that signed the request |
 | `PATCH /-/keys/{id}` | any of `{"name", "admin", "scopes", "disabled"}` | `200` updated record. Absent fields are left alone; the merged record must satisfy the rules above, so making a scoped key admin sends `"scopes": {}` in the same patch |
 | `POST /-/keys/{id}/rotate` | none | `200` record plus a new `secret`; the old one stops verifying at once |
 | `DELETE /-/keys/{id}` | none | `204` |
 
-Every route requires an admin key; a scoped key answers `forbidden`. An
-unknown id is `key_not_found`. A scope value other than `read` or `write`,
+Every route but `GET /-/keys/self` requires an admin key; a scoped key
+answers `forbidden`, also when the id it asks for is its own. An unknown id
+is `key_not_found`.
+
+`GET /-/keys/self` needs any key and nothing more, in either the header or
+the presigned form: it is how a client learns what it may do (its `admin`
+flag and `scopes`) without trying and reading `forbidden`. The record is
+the stored one at the time of the request, never the secret. A disabled key
+cannot read it, since a disabled key is `unknown_key` on every route
+(section 3.1). `self` is an alias under `GET` only: under `PATCH`,
+`DELETE` and `rotate` it is an id like any other, and no key has it,
+since generated ids start with `tk_`. A scope value other than `read` or `write`,
 a scope key that is not a valid bucket name or `*`, or `admin: true`
 together with `scopes` is `invalid_parameter` with `details.name`. The
 server does not prevent an admin from disabling, rotating or deleting its

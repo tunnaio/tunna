@@ -302,3 +302,10 @@ func (h *handler) deleteKey(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// getSelfKey answers GET /-/keys/self with the caller's own record, for any
+// key (ADR-0008). Stage 2 loaded it for this request, so there is no lookup.
+func (h *handler) getSelfKey(w http.ResponseWriter, r *http.Request) {
+	k, _ := caller(r)
+	writeJSON(w, http.StatusOK, toKeyRecord(k))
+}

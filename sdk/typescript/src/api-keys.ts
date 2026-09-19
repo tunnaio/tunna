@@ -165,4 +165,15 @@ export class ApiKeys {
       ...(options?.signal && { signal: options.signal }),
     });
   }
+
+  /** The record of the key this client signs with: whether it is admin, and a scoped key's buckets. Works for any key, unlike the rest of this group. */
+  async self(options?: CallOptions): Promise<ApiKey> {
+    const res = await this.#client.request({
+      method: "GET",
+      path: ["-", "keys", "self"],
+      ...(options?.signal && { signal: options.signal }),
+    });
+    const body: WireApiKey = await res.json();
+    return toApiKey(body);
+  }
 }

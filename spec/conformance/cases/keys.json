@@ -125,6 +125,75 @@
         { "request": { "method": "PATCH", "path": ["-", "keys", "tk_nope"], "auth": { "key": "alice" }, "body": { "json": { "disabled": true } } }, "expect": { "error": "key_not_found" } },
         { "request": { "method": "POST", "path": ["-", "keys", "tk_nope", "rotate"], "auth": { "key": "alice" } }, "expect": { "error": "key_not_found" } }
       ]
+    },
+    {
+      "name": "keys-self-scoped",
+      "description": "A scoped key reads its own record, scopes included and secret never, on the one keys route that does not need admin.",
+      "decision": "wire.md 4.2",
+      "fixtures": ["reader"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["-", "keys", "self"], "auth": { "key": "reader" } }, "expect": { "status": 200, "json": { "id": "tk_reader", "name": "reader", "admin": false, "scopes": { "photos": "read" }, "disabled": false }, "json_present": ["/created_at"], "json_absent": ["/secret"] } }
+      ]
+    },
+    {
+      "name": "keys-self-admin",
+      "description": "An admin key reads its own record; scopes is omitted as on every admin record.",
+      "decision": "wire.md 4.2",
+      "fixtures": ["alice"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["-", "keys", "self"], "auth": { "key": "alice" } }, "expect": { "status": 200, "json": { "id": "tk_alice", "name": "alice", "admin": true, "disabled": false }, "json_absent": ["/scopes", "/secret"] } }
+      ]
+    },
+    {
+      "name": "keys-self-presigned",
+      "description": "The presigned form names its key too, so a presigned GET answers with that key's record.",
+      "decision": "wire.md 4.2",
+      "fixtures": ["reader"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["-", "keys", "self"], "auth": { "presign": { "key": "reader", "expires_in_seconds": 300 } } }, "expect": { "status": 200, "json": { "id": "tk_reader" }, "json_absent": ["/secret"] } }
+      ]
+    },
+    {
+      "name": "keys-self-needs-a-key",
+      "description": "Anonymous is stage 2's unauthenticated; a disabled key is unknown_key like everywhere else, so self never shows disabled: true.",
+      "decision": "ADR-0004",
+      "fixtures": ["revoked"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["-", "keys", "self"], "auth": "none" }, "expect": { "error": "unauthenticated" } },
+        { "request": { "method": "GET", "path": ["-", "keys", "self"], "auth": { "key": "revoked" } }, "expect": { "error": "unknown_key" } }
+      ]
+    },
+    {
+      "name": "keys-self-does-not-open-the-id-route",
+      "description": "self is the only door: a scoped key asking for its own id through /-/keys/{id} is forbidden like any other id, and the list stays admin only.",
+      "decision": "ADR-0008",
+      "fixtures": ["reader"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["-", "keys", "tk_reader"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "request": { "method": "GET", "path": ["-", "keys"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } }
+      ]
+    },
+    {
+      "name": "keys-self-reflects-changes-immediately",
+      "description": "An admin's patch shows in the key's next self read. Pins the record to the stored one, against a future key cache serving a stale copy.",
+      "decision": "wire.md 4.2",
+      "fixtures": ["alice", "reader"],
+      "steps": [
+        { "request": { "method": "PATCH", "path": ["-", "keys", "tk_reader"], "auth": { "key": "alice" }, "body": { "json": { "name": "renamed", "scopes": { "*": "write" } } } }, "expect": { "status": 200 } },
+        { "request": { "method": "GET", "path": ["-", "keys", "self"], "auth": { "key": "reader" } }, "expect": { "status": 200, "json": { "id": "tk_reader", "name": "renamed", "scopes": { "*": "write" } } } }
+      ]
+    },
+    {
+      "name": "keys-self-is-read-only",
+      "description": "self is an alias for GET alone. Under the other methods it is an id like any other, and no key has it: generated ids start with tk_.",
+      "decision": "wire.md 4.2",
+      "fixtures": ["alice"],
+      "steps": [
+        { "request": { "method": "PATCH", "path": ["-", "keys", "self"], "auth": { "key": "alice" }, "body": { "json": { "disabled": true } } }, "expect": { "error": "key_not_found" } },
+        { "request": { "method": "DELETE", "path": ["-", "keys", "self"], "auth": { "key": "alice" } }, "expect": { "error": "key_not_found" } },
+        { "request": { "method": "POST", "path": ["-", "keys", "self", "rotate"], "auth": { "key": "alice" } }, "expect": { "error": "key_not_found" } },
+        { "request": { "method": "GET", "path": ["-", "keys", "self"], "auth": { "key": "alice" } }, "expect": { "status": 200, "json": { "id": "tk_alice", "disabled": false } } }
+      ]
     }
   ]
 }
