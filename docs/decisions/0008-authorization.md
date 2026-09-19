@@ -204,6 +204,33 @@ To revisit:
 - Whether presigned URLs should be able to carry a scope narrower than the
   key. Not needed while the signature already binds method and path.
 
+### Amendment 2026-09-20: no key learns nothing either
+
+A read without credentials on a bucket that is not public answers
+`unauthenticated` whether or not the bucket exists. Before this, a missing
+bucket answered `bucket_not_found` to an anonymous caller and a private one
+answered `unauthenticated`, so anyone could enumerate bucket names by
+trying them, while a key *without* access to the bucket was told
+`forbidden` either way. The rule this record already had for keys,
+"forbidden before lookup, so the response does not depend on whether the
+resource exists", now covers the caller with no key as well. It was never
+decided otherwise; the old answer was the order of two `case` lines.
+Found 2026-09-20 by a `HEAD` probe against a deployment.
+
+The alternative was S3's: `NoSuchBucket` and `AccessDenied` are
+distinguishable there, which helps a developer who mistyped a name. Here
+that developer has a key, and a key allowed to read the name still gets
+`bucket_not_found`. Only the keyless caller loses the hint, and that
+caller is the one enumeration is about.
+
+Who is told what, for a read of bucket `b`:
+
+| Caller | `b` is public | `b` is private | `b` does not exist |
+|--------|---------------|----------------|--------------------|
+| none | served | `unauthenticated` | `unauthenticated` |
+| key without read on `b` | served | `forbidden` | `forbidden` |
+| key with read on `b`, or admin | served | served | `bucket_not_found` |
+
 ### Amendment 2026-09-20: a key may read its own record
 
 `GET /-/keys/self` answers any authenticated key with its own record,

@@ -44,7 +44,8 @@ func writeError(w http.ResponseWriter, c code, message string, details map[strin
 //   - caller allowed read on the name: the bucket, or bucket_not_found;
 //     such a caller may know whether it exists.
 //   - caller not allowed: forbidden, found or not, so nothing is disclosed.
-//   - no caller: unauthenticated when found, bucket_not_found otherwise.
+//   - no caller: unauthenticated, found or not, for the same reason. The
+//     message must not name the bucket or say whether it exists.
 //
 // It writes the error and reports false, so a handler just returns.
 func (h *handler) readableBucket(w http.ResponseWriter, r *http.Request, name string) (tunna.Bucket, bool) {
@@ -63,7 +64,7 @@ func (h *handler) readableBucket(w http.ResponseWriter, r *http.Request, name st
 	case authed:
 		writeError(w, codeForbidden, "read access to "+name+" is required", nil)
 		return tunna.Bucket{}, false
-	case found:
+	default:
 		writeAuthError(w, codeUnauthenticated, "reading from a private bucket requires credentials", nil)
 		return tunna.Bucket{}, false
 	}

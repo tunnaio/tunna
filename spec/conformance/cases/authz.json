@@ -106,6 +106,63 @@
       "steps": [
         { "request": { "method": "GET", "path": ["public-site", "index.html"], "auth": "none" }, "expect": { "status": 200 } }
       ]
+    },
+    {
+      "name": "authz-no-key-cannot-tell-a-missing-bucket-from-a-private-one",
+      "description": "Without credentials, a bucket that does not exist answers exactly as a private one that does: same code, same message, same challenge. Bucket names cannot be found by trying them. GET, HEAD and listing alike.",
+      "decision": "ADR-0008",
+      "fixtures": ["photos"],
+      "steps": [
+        {
+          "name": "private-exists",
+          "request": { "method": "GET", "path": ["photos", "hello.txt"], "auth": "none" },
+          "expect": { "error": "unauthenticated", "headers": { "WWW-Authenticate": "TUNNA1-HMAC-SHA256" } },
+          "capture": { "message": "/error/message" }
+        },
+        {
+          "name": "missing-get",
+          "request": { "method": "GET", "path": ["no-such-bucket", "hello.txt"], "auth": "none" },
+          "expect": { "error": "unauthenticated", "headers": { "WWW-Authenticate": "TUNNA1-HMAC-SHA256" }, "json": { "error": { "message": "{{message}}" } }, "json_absent": ["/error/details"] }
+        },
+        {
+          "name": "missing-head",
+          "request": { "method": "HEAD", "path": ["no-such-bucket", "hello.txt"], "auth": "none" },
+          "expect": { "error": "unauthenticated", "body_empty": true }
+        },
+        {
+          "name": "private-list",
+          "request": { "method": "GET", "path": ["photos"], "auth": "none" },
+          "expect": { "error": "unauthenticated" },
+          "capture": { "listmessage": "/error/message" }
+        },
+        {
+          "name": "missing-list",
+          "request": { "method": "GET", "path": ["no-such-bucket"], "auth": "none" },
+          "expect": { "error": "unauthenticated", "json": { "error": { "message": "{{listmessage}}" } }, "json_absent": ["/error/details"] }
+        }
+      ]
+    },
+    {
+      "name": "authz-only-a-reader-of-the-name-learns-it-is-missing",
+      "description": "The other two rows of the table: a key without read on the name is forbidden whether it exists or not, and a key with read on it, by name, by * or as admin, is told bucket_not_found.",
+      "decision": "ADR-0008",
+      "fixtures": ["alice", "reader", "star", "empty"],
+      "steps": [
+        { "name": "no-access-exists", "request": { "method": "GET", "path": ["empty", "a.txt"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "name": "no-access-missing", "request": { "method": "GET", "path": ["no-such-bucket", "a.txt"], "auth": { "key": "reader" } }, "expect": { "error": "forbidden" } },
+        { "name": "wildcard-reader", "request": { "method": "GET", "path": ["no-such-bucket", "a.txt"], "auth": { "key": "star" } }, "expect": { "error": "bucket_not_found" } },
+        { "name": "admin", "request": { "method": "HEAD", "path": ["no-such-bucket", "a.txt"], "auth": { "key": "alice" } }, "expect": { "error": "bucket_not_found", "body_empty": true } },
+        { "name": "admin-list", "request": { "method": "GET", "path": ["no-such-bucket"], "auth": { "key": "alice" } }, "expect": { "error": "bucket_not_found" } }
+      ]
+    },
+    {
+      "name": "authz-public-bucket-is-unaffected",
+      "description": "A public bucket is known to exist by being served, so its missing objects stay object_not_found for a caller with no key.",
+      "decision": "ADR-0008",
+      "fixtures": ["public-site"],
+      "steps": [
+        { "request": { "method": "GET", "path": ["public-site", "no-such-page.html"], "auth": "none" }, "expect": { "error": "object_not_found" } }
+      ]
     }
   ]
 }

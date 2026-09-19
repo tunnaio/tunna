@@ -149,6 +149,10 @@ Stage 3 decides what an authenticated key may do. Two kinds of key:
 
 A key without the level answers `forbidden` before the bucket or object is
 looked up, so the response does not depend on whether the resource exists.
+The same holds with no key at all: a read without credentials answers
+`unauthenticated` for every bucket that is not public, whether or not it
+exists, so bucket names cannot be discovered by trying them. Only a caller
+allowed to read a bucket is told `bucket_not_found`.
 Upload routes are the exception: the session is loaded first to learn its
 bucket, so an unknown session is `upload_not_found` for everyone and a
 known one is `forbidden` for a key without `write` on its bucket. The
@@ -287,7 +291,8 @@ supported and are served as a full `200`. `If-None-Match` against the ETag
 answers `304`.
 
 A read on a bucket marked public needs no credentials. A read on any other
-bucket requires them; without, `unauthenticated`.
+bucket requires them; without, `unauthenticated`, and the same for a bucket
+that does not exist (section 3.6).
 
 ### 5.3 Object record
 
@@ -434,7 +439,9 @@ Response `200`:
 last key in it; a client passes it as `after` to continue. A final page of
 exactly `limit` records therefore yields one more, empty page.
 
-An unknown bucket is `bucket_not_found`.
+An unknown bucket is `bucket_not_found` for a key allowed to read it, and
+`unauthenticated` or `forbidden` for everyone else, exactly as for a bucket
+that exists (section 3.6).
 
 **Delimiter grouping** (folding `a/b/c` and `a/b/d` into a common prefix
 `a/b/`) is not specified in this version. A `delimiter` parameter is
