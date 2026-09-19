@@ -376,16 +376,25 @@ func check(t *testing.T, name string, e expect, resp *http.Response, body []byte
 		if wantStatus == nil {
 			wantStatus = &st
 		}
-		var eb struct {
-			Error struct {
-				Code string `json:"code"`
-			} `json:"error"`
+		// Every wire error names its code in a header too (wire.md 9), so
+		// a HEAD, which has no body, still says what went wrong.
+		if got := resp.Header.Get("X-Tunna-Error"); got != code {
+			t.Errorf("%s: X-Tunna-Error = %q, want %q", name, got, code)
 		}
-		if err := json.Unmarshal(body, &eb); err != nil {
-			t.Errorf("%s: error body is not JSON: %v\n%s", name, err, body)
-		} else if eb.Error.Code != code {
-			t.Errorf("%s: error code = %q, want %q", name, eb.Error.Code, code)
+		if resp.Request.Method != http.MethodHead {
+			var eb struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(body, &eb); err != nil {
+				t.Errorf("%s: error body is not JSON: %v\n%s", name, err, body)
+			} else if eb.Error.Code != code {
+				t.Errorf("%s: error code = %q, want %q", name, eb.Error.Code, code)
+			}
 		}
+	} else if got := resp.Header.Get("X-Tunna-Error"); got != "" && resp.StatusCode < 400 {
+		t.Errorf("%s: X-Tunna-Error = %q on a %d response", name, got, resp.StatusCode)
 	}
 	if wantStatus != nil && resp.StatusCode != *wantStatus {
 		t.Errorf("%s: status = %d, want %d\n%s", name, resp.StatusCode, *wantStatus, body)

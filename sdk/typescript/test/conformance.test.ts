@@ -234,7 +234,7 @@ async function runCase(c: Case): Promise<void> {
     });
     const respBody = new Uint8Array(await res.arrayBuffer());
 
-    check(at, s.expect, res, respBody, subJSON);
+    check(at, s.expect, res, respBody, subJSON, s.request.method);
 
     for (const [key, from] of Object.entries(s.capture ?? {})) {
       const val = capture(from, res, respBody);
@@ -250,6 +250,7 @@ function check(
   res: Response,
   body: Uint8Array,
   sub: (s: string) => string,
+  method: string,
 ): void {
   const text = () => new TextDecoder().decode(body);
   let wantStatus = e.status;
@@ -261,12 +262,19 @@ function check(
         at(`expects error ${e.error} which is not in errors.json`),
       );
     wantStatus ??= st;
-    const eb = parseJSON(body);
-    expect(eb, at(`error body is not JSON: ${text()}`)).not.toBeUndefined();
-    expect(
-      (eb as { error?: { code?: string } })?.error?.code,
-      at("error code"),
-    ).toBe(e.error);
+    // Every wire error names its code in a header too (wire.md 9), so a
+    // HEAD, which has no body, still says what went wrong.
+    expect(res.headers.get("X-Tunna-Error"), at("X-Tunna-Error")).toBe(e.error);
+    if (method !== "HEAD") {
+      const eb = parseJSON(body);
+      expect(eb, at(`error body is not JSON: ${text()}`)).not.toBeUndefined();
+      expect(
+        (eb as { error?: { code?: string } })?.error?.code,
+        at("error code"),
+      ).toBe(e.error);
+    }
+  } else if (res.status < 400) {
+    expect(res.headers.get("X-Tunna-Error"), at("X-Tunna-Error on a success")).toBeNull();
   }
   if (wantStatus !== undefined) {
     expect(res.status, at(`status; body: ${text()}`)).toBe(wantStatus);

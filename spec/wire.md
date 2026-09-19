@@ -481,6 +481,24 @@ Body shape:
 change without a spec bump. `details` carries structured fields named in the
 error table entry, such as `server_time` on `clock_skew`.
 
+Every error response also carries the code in a header:
+
+```
+X-Tunna-Error: object_not_found
+```
+
+The body remains the authority, since only it has `message` and `details`.
+The header exists for the responses that have no body: a `HEAD` that fails
+answers with the error's status and headers and nothing else, and without
+the header a client could tell a missing object from a missing bucket only
+by repeating the request as `GET`. A cross-origin page can read it, since
+section 10 exposes every response header.
+
+The header is present exactly when the response is a wire error from the
+ladder of section 2. HTTP's own answers carry neither it nor the body: `304`
+and `416` from a conditional or ranged read (section 5.2), and a `400` the
+HTTP layer gives to a request it cannot parse before any stage runs.
+
 Every 401 response carries `WWW-Authenticate: TUNNA1-HMAC-SHA256`, as HTTP
 requires.
 

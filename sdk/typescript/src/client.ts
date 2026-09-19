@@ -301,13 +301,22 @@ export class Tunna {
       return res;
     }
 
-    if (res.headers.get("Content-Type")?.includes("application/json")) {
-      if (call.method === "HEAD" || res.body === null) {
+    if (call.method === "HEAD" || res.body === null) {
+      const code = res.headers.get("X-Tunna-Error");
+      if (code === null) {
         throw new TransportError(
-          `${call.method} ${url}: ${res.status}; HEAD answers carry no error body, repeat as GET for the code`,
+          `${call.method} ${url}: ${res.status}; no error body and no X-Tunna-Error header (server older than 0.1.0-alpha.4?), repeat as GET for the code`,
         );
       }
+      if (!isErrorCode(code)) {
+        throw new TransportError(
+          `unexpected error code ${code} (${res.status})`,
+        );
+      }
+      throw new TunnaError(code, res.status, `${call.method} ${url}: ${code}`);
+    }
 
+    if (res.headers.get("Content-Type")?.includes("application/json")) {
       const body = await res.json();
       const code = body?.error?.code;
       if (!isErrorCode(code)) {
@@ -322,6 +331,7 @@ export class Tunna {
         body.error.details,
       );
     }
+
     throw new TransportError(`unexpected ${res.status} response`);
   }
 }

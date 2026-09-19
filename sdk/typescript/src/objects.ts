@@ -222,7 +222,7 @@ export class Objects {
     };
   }
 
-  /** The object's headers without its body. */
+  /** The object's headers without its body. A failure is a TunnaError like any other: the code comes from the X-Tunna-Error header, since a HEAD answer has no body (so no server message or details). */
   async head(
     bucket: string,
     key: string,

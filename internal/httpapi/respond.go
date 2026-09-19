@@ -25,6 +25,7 @@ func writeError(w http.ResponseWriter, c code, message string, details map[strin
 	if !ok {
 		panic("httpapi: error code " + string(c) + " is not in statusOf")
 	}
+	w.Header().Set("X-Tunna-Error", string(c))
 	writeJSON(w, status, errorBody{
 		Error: errorDetail{
 			Code:    c,

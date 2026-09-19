@@ -103,7 +103,10 @@ same either way, because the host is not signed.
 
 Errors: `TunnaError` is the server's answer, with `code` typed as the
 union generated from `spec/errors.json`; `TransportError` is no answer or
-one outside the contract, with the underlying error as `cause`.
+one outside the contract, with the underlying error as `cause`. A failed
+`head` is a `TunnaError` too: its answer has no body, so the code is read
+from the `X-Tunna-Error` header (servers from 0.1.0-alpha.4), and `message`
+and `details` are the SDK's own and absent.
 
 Every method takes `{ signal }` (an `AbortSignal`) as or in its last
 argument, `upload` included, where an abort also removes the half-written

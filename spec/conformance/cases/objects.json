@@ -348,6 +348,51 @@
           "expect": { "status": 200, "headers": { "Content-Length": "13" } }
         }
       ]
+    },
+    {
+      "name": "object-head-errors-carry-the-code-in-a-header",
+      "description": "A HEAD answer has no body, so X-Tunna-Error is the only place its code can be: one step per stage a HEAD can fail at. The runner checks the same header on every other expected error too.",
+      "decision": "wire.md 9",
+      "fixtures": ["alice", "reader", "photos", "empty"],
+      "steps": [
+        {
+          "name": "state-object",
+          "request": { "method": "HEAD", "path": ["photos", "nope.txt"], "auth": { "key": "alice" } },
+          "expect": { "error": "object_not_found", "body_empty": true }
+        },
+        {
+          "name": "state-bucket",
+          "request": { "method": "HEAD", "path": ["no-such-bucket", "a.txt"], "auth": { "key": "alice" } },
+          "expect": { "error": "bucket_not_found", "body_empty": true }
+        },
+        {
+          "name": "authorization",
+          "request": { "method": "HEAD", "path": ["empty", "a.txt"], "auth": { "key": "reader" } },
+          "expect": { "error": "forbidden", "body_empty": true }
+        },
+        {
+          "name": "authentication",
+          "request": { "method": "HEAD", "path": ["photos", "hello.txt"], "auth": "none" },
+          "expect": { "error": "unauthenticated", "body_empty": true, "headers": { "WWW-Authenticate": { "present": true } } }
+        },
+        {
+          "name": "bad-signature",
+          "request": { "method": "HEAD", "path": ["photos", "hello.txt"], "auth": { "key": "alice", "corrupt_signature": true } },
+          "expect": { "error": "bad_signature", "body_empty": true }
+        }
+      ]
+    },
+    {
+      "name": "object-head-success-has-no-error-header",
+      "description": "The header appears on wire errors only.",
+      "decision": "wire.md 9",
+      "fixtures": ["alice", "photos"],
+      "steps": [
+        {
+          "request": { "method": "HEAD", "path": ["photos", "hello.txt"], "auth": { "key": "alice" } },
+          "expect": { "status": 200, "headers": { "X-Tunna-Error": { "present": false } } }
+        }
+      ]
     }
   ]
 }

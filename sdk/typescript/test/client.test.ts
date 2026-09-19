@@ -153,9 +153,46 @@ describe("buckets", () => {
 });
 
 describe("errors without a body", () => {
-  test("a failed HEAD names the status and says why there is no code", async () => {
-    // HEAD answers carry the error's Content-Type but no body, so the code
-    // cannot be read; the message must say so rather than "code undefined".
+  const bodiless = (status: number, code?: string) =>
+    new Response(null, { status, headers: { "Content-Type": "application/json", ...(code && { "X-Tunna-Error": code }) } });
+
+  test("a failed HEAD is a TunnaError with the code from X-Tunna-Error", async () => {
+    const { tunna } = client(() => bodiless(404, "object_not_found"));
+    const err = await tunna.objects.head("b", "missing").catch((e) => e);
+    expect(err).toBeInstanceOf(TunnaError);
+    expect(err.code).toBe("object_not_found");
+    expect(err.status).toBe(404);
+    expect(err.stage).toBe(6);
+    expect(err.details).toBeUndefined();
+    // No body means no server message; the SDK's own must still be readable.
+    expect(err.message).toContain("object_not_found");
+    expect(err.message).not.toContain("undefined");
+  });
+
+  test("a header code outside the contract is a TransportError, like a body code", async () => {
+    const { tunna } = client(() => bodiless(404, "teapot"));
+    const err = await tunna.objects.head("b", "missing").catch((e) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect(err.message).toContain("teapot");
+  });
+
+  test("with a body, the body wins: it has the message and the details", async () => {
+    const { tunna } = client(
+      () =>
+        new Response(JSON.stringify({ error: { code: "bucket_not_found", message: "no bucket named nope", details: { bucket: "nope" } } }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", "X-Tunna-Error": "bucket_not_found" },
+        }),
+    );
+    const err = await tunna.buckets.get("nope").catch((e) => e);
+    expect(err).toBeInstanceOf(TunnaError);
+    expect(err.message).toBe("no bucket named nope");
+    expect(err.details).toEqual({ bucket: "nope" });
+  });
+
+  test("a failed HEAD from a server without the header names the status and says why there is no code", async () => {
+    // Servers before 0.1.0-alpha.4 send no X-Tunna-Error. The message must
+    // say so rather than "code undefined".
     const { tunna } = client(() => new Response(null, { status: 404, headers: { "Content-Type": "application/json" } }));
     const err = await tunna.objects.head("b", "missing").catch((e) => e);
     expect(err).toBeInstanceOf(TransportError);
