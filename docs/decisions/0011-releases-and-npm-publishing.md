@@ -129,6 +129,24 @@ server's pattern and would start a server release), commit as
 commit, push the tag, then approve the staged version on npmjs.com. The
 maintainer does all five.
 
+**`scripts/release.ts` (added 2026-09-21)** does the first four, for either
+line: `bun scripts/release.ts sdk` or `bun scripts/release.ts server`. It
+exists for its refusals, not for the typing it saves. Each is a mistake
+that was made or nearly made by hand: it will not run unless the tree is
+clean, on `main`, level with `origin/main`, and CI is green on the commit
+(a red commit reached `main` on 2026-09-20 and was nearly tagged); it
+builds the tag from the line's own prefix, so an SDK release cannot start
+a server one; it refuses a tag that exists; and it pushes one tag by name,
+never `--tags`. It computes the next prerelease from the newest tag on the
+line, or takes an exact version. It asks for the version to be typed
+before it creates anything, so it cannot run unattended, and `--dry-run`
+prints every step and reports, rather than stops at, every precondition
+that would have refused. It stays a tool the maintainer runs: approving
+on npmjs.com and moving `latest` need a person and are printed at the end.
+A Bun script rather than shell, so it is one file for Windows and Linux in
+a language the SDK already uses; the cost is that a server release needs
+Bun installed.
+
 ### The workflow
 
 `.github/workflows/publish-typescript.yml`, on push of tags matching

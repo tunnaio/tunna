@@ -74,7 +74,9 @@ there is worth claiming when that happens.
 `v<semver>` on the commit to release. While the spec is draft:
 `v0.1.0-alpha.N`, prerelease in GitHub's sense. `v0.1.0` with the first
 stable spec. The tag is the version; the workflow refuses a tag whose
-name is not a semver.
+name is not a semver. `bun scripts/release.ts server` creates and pushes
+it, after checking that the commit is on `origin/main` with green CI
+(ADR-0011 describes the script).
 
 ### Artefacts
 
