@@ -77,7 +77,7 @@
   },
   "scripts": {
     "build": "tsdown",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && tsc -p ../../scripts",
     "test": "bun test",
     "gen": "bun run scripts/gen-errors.ts",
     "smoke": "bun run build && node test/node-smoke.mjs && node test/node-smoke.cjs",

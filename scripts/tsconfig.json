@@ -1,0 +1,23 @@
+{
+  // Bun runs these scripts without typechecking them, so something has to:
+  // `bun run check` in sdk/typescript compiles this project too, and CI runs
+  // that. Types and the compiler come from the SDK's dev dependencies; the
+  // repository has no package.json of its own.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "typeRoots": ["../sdk/typescript/node_modules/@types", "../sdk/typescript/node_modules"],
+    "types": ["bun-types"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["*.ts"]
+}
