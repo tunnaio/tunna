@@ -28,6 +28,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/tunnaio/tunna/internal/disk"
 	"github.com/tunnaio/tunna/internal/fixtures"
@@ -387,13 +388,17 @@ func check(t *testing.T, name string, e expect, resp *http.Response, body []byte
 		if resp.Request.Method != http.MethodHead {
 			var eb struct {
 				Error struct {
-					Code string `json:"code"`
+					Code    string `json:"code"`
+					Message string `json:"message"`
 				} `json:"error"`
 			}
 			if err := json.Unmarshal(body, &eb); err != nil {
 				t.Errorf("%s: error body is not JSON: %v\n%s", name, err, body)
 			} else if eb.Error.Code != code {
 				t.Errorf("%s: error code = %q, want %q", name, eb.Error.Code, code)
+			} else if !strings.ContainsFunc(eb.Error.Message, unicode.IsLetter) {
+				// The text is free to change, but it has to say something.
+				t.Errorf("%s: error message %q has no words in it", name, eb.Error.Message)
 			}
 		}
 	} else if got := resp.Header.Get("X-Tunna-Error"); got != "" && resp.StatusCode < 400 {

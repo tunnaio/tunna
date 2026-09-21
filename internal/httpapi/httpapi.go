@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tunnaio/tunna"
+	"github.com/tunnaio/tunna/sig"
 )
 
 // Options configures the HTTP adapter. Zero values take the defaults noted
@@ -100,12 +101,12 @@ func New(o Options) http.Handler {
 	// buckets routes
 	mux.HandleFunc("GET /-/buckets", chain(h.listBuckets, requireAuth))
 	mux.HandleFunc("GET /-/buckets/{bucket}", chain(h.getBucket, requireAuth, requireAccess(tunna.Read)))
-	mux.HandleFunc("PUT /-/buckets/{bucket}", chain(h.createBucket, requireAuth, requireAdmin))
+	mux.HandleFunc("PUT /-/buckets/{bucket}", chain(h.createBucket, headerFormOnly, requireAuth, requireAdmin))
 	mux.HandleFunc("DELETE /-/buckets/{bucket}", chain(h.deleteBucket, requireAuth, requireAdmin))
-	mux.HandleFunc("PATCH /-/buckets/{bucket}", chain(h.patchBucket, requireAuth, requireAdmin))
+	mux.HandleFunc("PATCH /-/buckets/{bucket}", chain(h.patchBucket, headerFormOnly, requireAuth, requireAdmin))
 
 	// uploads routes
-	mux.HandleFunc("POST /-/uploads", chain(h.createUpload, requireAuth))
+	mux.HandleFunc("POST /-/uploads", chain(h.createUpload, headerFormOnly, requireAuth))
 	mux.HandleFunc("PUT /-/uploads/{id}/parts/{n}", chain(h.putUploadPart, requireAuth))
 	mux.HandleFunc("GET /-/uploads/{id}", chain(h.getUpload, requireAuth))
 	mux.HandleFunc("DELETE /-/uploads/{id}", chain(h.deleteUpload, requireAuth))
@@ -119,9 +120,9 @@ func New(o Options) http.Handler {
 
 	// key management
 	mux.HandleFunc("GET /-/keys", chain(h.listKeys, requireAuth, requireAdmin))
-	mux.HandleFunc("POST /-/keys", chain(h.createKey, requireAuth, requireAdmin))
+	mux.HandleFunc("POST /-/keys", chain(h.createKey, headerFormOnly, requireAuth, requireAdmin))
 	mux.HandleFunc("GET /-/keys/{id}", chain(h.getKey, requireAuth, requireAdmin))
-	mux.HandleFunc("PATCH /-/keys/{id}", chain(h.patchKey, requireAuth, requireAdmin))
+	mux.HandleFunc("PATCH /-/keys/{id}", chain(h.patchKey, headerFormOnly, requireAuth, requireAdmin))
 	mux.HandleFunc("DELETE /-/keys/{id}", chain(h.deleteKey, requireAuth, requireAdmin))
 	mux.HandleFunc("POST /-/keys/{id}/rotate", chain(h.rotateKey, requireAuth, requireAdmin))
 	mux.HandleFunc("GET /-/keys/self", chain(h.getSelfKey, requireAuth))
@@ -154,6 +155,20 @@ func reserved(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.PathValue("bucket") == "-" {
 			writeError(w, codeUnknownRoute, "no such route", nil)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// headerFormOnly is a stage 2 rule for routes that take their parameters
+// from a JSON body: a presigned URL binds method, path, query and headers
+// but not the body, so it would authorize any body (ADR-0013). Listed first
+// in a chain, so a scoped key is told this and not forbidden.
+func headerFormOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has(sig.ParamSig) {
+			writeAuthError(w, codePresignNotAllowed, "this route takes its parameters from the request body, which a presigned URL cannot bind; sign the request in header form", nil)
 			return
 		}
 		next(w, r)

@@ -16,6 +16,7 @@ export type ErrorCode =
   | "clock_skew"
   | "presign_expired"
   | "presign_too_long"
+  | "presign_not_allowed"
   | "forbidden"
   | "invalid_bucket_name"
   | "invalid_key"
@@ -49,6 +50,7 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = {
   clock_skew: 401,
   presign_expired: 401,
   presign_too_long: 401,
+  presign_not_allowed: 401,
   forbidden: 403,
   invalid_bucket_name: 422,
   invalid_key: 422,
@@ -99,6 +101,7 @@ export const ERROR_STAGE: Readonly<Record<ErrorCode, ErrorStage>> = {
   clock_skew: 2,
   presign_expired: 2,
   presign_too_long: 2,
+  presign_not_allowed: 2,
   forbidden: 3,
   invalid_bucket_name: 4,
   invalid_key: 4,

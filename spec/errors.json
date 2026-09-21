@@ -101,6 +101,12 @@
       }
     },
     {
+      "code": "presign_not_allowed",
+      "status": 401,
+      "stage": 2,
+      "description": "A presigned request to a route that takes its parameters from a JSON body, which a presigned URL cannot bind. Sign the request in header form."
+    },
+    {
       "code": "forbidden",
       "status": 403,
       "stage": 3,

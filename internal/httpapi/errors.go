@@ -20,6 +20,7 @@ const (
 	codeClockSkew           code = "clock_skew"
 	codePresignExpired      code = "presign_expired"
 	codePresignTooLong      code = "presign_too_long"
+	codePresignNotAllowed   code = "presign_not_allowed"
 
 	// stage 3: authorization
 	codeForbidden code = "forbidden"
@@ -67,6 +68,7 @@ var statusOf = map[code]int{
 	codeClockSkew:           http.StatusUnauthorized,
 	codePresignExpired:      http.StatusUnauthorized,
 	codePresignTooLong:      http.StatusUnauthorized,
+	codePresignNotAllowed:   http.StatusUnauthorized,
 
 	// stage 3: authorization
 	codeForbidden: http.StatusForbidden,

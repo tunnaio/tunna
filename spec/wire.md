@@ -122,6 +122,27 @@ days. The key is looked up when the URL is used; a disabled or deleted key
 fails every URL it signed. A request carrying both header-form and
 presigned-form credentials is `malformed_request`.
 
+**What a presigned URL authorizes.** The signature binds the method, the
+path, the query and the listed headers, and nothing else: not the body
+(section 3.2). So a presigned URL authorizes exactly one request only where
+the request is fully described by those. That holds for every object route,
+where the path names the object and the content is the uploader's to
+choose, and for the routes of an upload session. It does not hold for a
+route that takes its parameters from a JSON body: one presigned
+`POST /-/uploads` would let its holder start a session for any bucket, key
+and part size the signing key may write. Those routes, marked "header form"
+in section 4, refuse the presigned form with `presign_not_allowed` [ADR-0013].
+A signed `X-Tunna-Checksum` does not change this: CRC32C detects accidents
+and is trivially matched on purpose.
+
+`POST /-/uploads/{id}/complete` has a body and stays presignable. Its
+`parts` and `checksums` describe bytes the same holder uploaded, and a
+browser that uploads through presigned URLs must be able to finish.
+
+The refusal is a statement about the credentials, so it is stage 2: a scoped
+key presigning `POST /-/keys` is told `presign_not_allowed`, not
+`forbidden`.
+
 ### 3.5 Anonymous routes
 
 Health, version and limits, and reads on buckets marked public, need no
@@ -172,20 +193,25 @@ answers `unknown_route`. Both use the JSON error body from section 9.
 | `GET /-/health` | Liveness. `200 {"status":"ok"}` | anonymous |
 | `GET /-/version` | Server version and spec version | anonymous |
 | `GET /-/limits` | This deployment's limits (section 11) | anonymous |
-| `GET /-/buckets` | List buckets visible to the key | key |
-| `PUT /-/buckets/{bucket}` | Create a bucket | key |
-| `GET /-/buckets/{bucket}` | Bucket metadata and settings | key |
-| `DELETE /-/buckets/{bucket}` | Delete an empty bucket | key |
-| `POST /-/uploads` | Initiate an upload session (section 6) | key |
-| `GET /-/uploads/{id}` | Session state: part size, received parts | key or presigned |
-| `PUT /-/uploads/{id}/parts/{n}` | Upload part `n` | key or presigned |
-| `POST /-/uploads/{id}/complete` | Complete the session | key or presigned |
-| `DELETE /-/uploads/{id}` | Abort the session | key or presigned |
-| `/-/keys...` | Key management (section 4.2) | admin |
+| `GET /-/buckets` | List buckets visible to the key | either form |
+| `PUT /-/buckets/{bucket}` | Create a bucket | header form |
+| `GET /-/buckets/{bucket}` | Bucket metadata and settings | either form |
+| `PATCH /-/buckets/{bucket}` | Change a bucket's settings | header form |
+| `DELETE /-/buckets/{bucket}` | Delete an empty bucket | either form |
+| `POST /-/uploads` | Initiate an upload session (section 6) | header form |
+| `GET /-/uploads/{id}` | Session state: part size, received parts | either form |
+| `PUT /-/uploads/{id}/parts/{n}` | Upload part `n` | either form |
+| `POST /-/uploads/{id}/complete` | Complete the session | either form |
+| `DELETE /-/uploads/{id}` | Abort the session | either form |
+| `POST /-/keys`, `PATCH /-/keys/{id}` | Create and change keys (section 4.2) | header form |
+| every other `/-/keys` route | Read, rotate and delete keys (section 4.2) | either form |
 
-"key" in the Auth column means credentials are required; a request without
-any answers `unauthenticated`. "key or presigned" means either form. What a
-key may do is section 3.6.
+Every route that is not anonymous requires credentials; a request without
+any answers `unauthenticated`. "Either form" means the header form or the
+presigned form of section 3. "Header form" means the presigned form is
+refused with `presign_not_allowed`, for the reason in section 3.4. What a
+key may do once authenticated is section 3.6. Every object route (section
+5) takes either form.
 
 ### 4.1 Buckets
 
@@ -321,8 +347,10 @@ file and never a dangling row.
 ## 6. Uploads [ADR-0001]
 
 Numbered parts of a fixed per-session size, written at offset into one file.
-No assembly step. Every route below requires credentials, header form or
-presigned; the presigned form is how a browser uploads parts directly.
+No assembly step. Every route below requires credentials. Initiate takes the
+header form only (section 3.4); the part, query, complete and abort routes
+take either form, and the presigned form is how a browser uploads parts
+directly into a session its backend initiated.
 
 ### 6.1 Initiate
 

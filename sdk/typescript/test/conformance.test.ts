@@ -272,6 +272,9 @@ function check(
         (eb as { error?: { code?: string } })?.error?.code,
         at("error code"),
       ).toBe(e.error);
+      // The text is free to change, but it has to say something.
+      const message = (eb as { error?: { message?: unknown } })?.error?.message;
+      expect(typeof message === "string" && /\p{L}/u.test(message), at(`error message ${JSON.stringify(message)} has no words in it`)).toBe(true);
     }
   } else if (res.status < 400) {
     expect(res.headers.get("X-Tunna-Error"), at("X-Tunna-Error on a success")).toBeNull();
