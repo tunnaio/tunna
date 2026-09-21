@@ -85,9 +85,9 @@ new Tunna({ url, presign: provider });          // instead of key
 
 `PresignableRequest` is what the pipeline would otherwise sign: method,
 path segments, query, and the headers to bind. The pipeline calls the
-provider where it calls the signer today. In `upload`, the call happens
-inside `prepare()`, next to the read and the hash, so it overlaps with the
-part in flight and costs no wall-clock time.
+provider where it calls the signer today, so in `upload` each part's URL
+is asked for immediately before that part's PUT: one backend round trip
+per part, on that worker's path, while the other workers keep sending.
 
 **P2: A batch: requests in, URLs out, same order.** One backend round trip
 for a window of parts. But a part's URL binds its checksum header, which is
@@ -140,12 +140,15 @@ policy decision lives anyway: choosing bucket, key and part size *is* the
 authorization. S2 buys generality with a second hash and a replay
 protocol. S3 leaves a trap under the feature being built.
 
-P1 keeps one pipeline. Its cost, a round trip per part, is real on paper
-(350 calls for a 2.8 GB file at 8 MiB) and invisible in practice: with
-read-ahead each worker prepares part n+1 while n is in flight, and the
-provider call joins the read and the hash in that slot. If a measurement
-ever shows the provider on the critical path, P2 is an addition, not a
-break: a provider may be given a second, optional batch method.
+P1 keeps one pipeline. Its cost is a round trip to the application's
+backend before each part's PUT (350 calls for a 2.8 GB file at 8 MiB). It
+is on the critical path of its worker, and small next to it: milliseconds
+against the seconds an 8 MiB part takes on the link measured 2026-09-17,
+and the other workers are sending meanwhile. It could be moved off the
+path by asking for part n+1's URL during read-ahead, which needs
+`putPart` to accept a URL obtained earlier; not done, because nothing has
+measured a need. If a measurement shows the provider limiting throughput,
+that and P2 are both additions, not breaks.
 
 ## Decision
 
@@ -200,13 +203,23 @@ not by omission: those are the requests whose meaning a URL cannot carry.
 - A client that presigned a bucket create or a session initiate for itself
   breaks. None is known; the SDK never offered it (`presign` takes a bucket
   and a key).
-- `upload` in provider mode makes one backend call per part. Hidden by
-  read-ahead; to be measured against the 2026-09-17 numbers.
+- `upload` in provider mode makes one backend call per part, before that
+  part's PUT. To be measured against the 2026-09-17 numbers. An earlier
+  draft of this record said read-ahead hides it; the implementation asks
+  inside the request pipeline, not inside read-ahead, so it does not.
 
 To revisit:
 
-- A batch method on the provider, if a measurement shows the per-part call
-  on the critical path.
+- Asking for the next part's URL during read-ahead, or a batch method on
+  the provider, if a measurement shows the per-part call limiting
+  throughput.
+- An empty source with a given session (decided 2026-09-21): the object
+  is one PUT, and the unused session is aborted best effort, whether the
+  PUT succeeded or not. Left alone it would block deleting the bucket
+  until it expired. A backend whose policy signs only session paths will
+  refuse that PUT; it should sign the object path the session names too.
+- `presign` takes a signal (added 2026-09-21): with a provider it is a
+  network call. `presignRequest` does not: it is a local HMAC.
 - A separate, narrower client class for provider mode (P5), if the list of
   methods that cannot work there grows, or users keep meeting the runtime
   error: then the types are lying often enough to matter.
@@ -218,11 +231,21 @@ To revisit:
 ## Action items
 
 1. [x] Maintainer accepts, amends, or rejects this record. Accepted 2026-09-21: S1 with the new code, P1 as a function named `presign`, U1, one client class.
-2. [ ] `spec/errors.json`: `presign_not_allowed`; `spec/wire.md` 3.4, 4 and
+2. [x] `spec/errors.json`: `presign_not_allowed`; `spec/wire.md` 3.4, 4 and
        6; conformance cases for each refused route and for `complete`
-       staying accepted.
-3. [ ] Server: refuse the presigned form on the five routes.
-4. [ ] SDK tests: `presignRequest`, provider mode in the pipeline, `upload`
-       with `{ session }`, the two `TypeError`s.
-5. [ ] SDK: the code, by the maintainer.
-6. [ ] README: a backend endpoint and a page, end to end, in twenty lines.
+       staying accepted. Done 2026-09-21, four cases.
+3. [x] Server: refuse the presigned form on the five routes
+       (`headerFormOnly`, first in the chain). Done 2026-09-21.
+4. [x] SDK tests: `presignRequest` and its guard (a table, and a check
+       derived from the conformance cases so the SDK's list cannot drift
+       from the server's), provider mode in the pipeline, `upload` with
+       `{ session }`, the `TypeError`s. Done 2026-09-21.
+5. [x] SDK: the code, by the maintainer. Done 2026-09-21. The option type
+       makes a key together with a provider a compile error as well as a
+       runtime one.
+6. [x] README: a backend endpoint and a page, end to end. Done 2026-09-21.
+       Probe the same day against the fixture server, no injected fetch: a
+       keyless page client uploaded 10 MB in three parts into a session a
+       backend client created, read it back byte for byte, and saw the
+       backend's own error when its policy refused a delete.
+7. [ ] Measure a provider-mode upload against the 2026-09-17 numbers.

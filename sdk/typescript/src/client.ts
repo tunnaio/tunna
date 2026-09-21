@@ -11,7 +11,11 @@ import {
   type Key,
   type SigningRequest,
 } from "./sign.ts";
-import { Uploads, type UploadCreateOptions } from "./uploads.ts";
+import {
+  Uploads,
+  type UploadCreateOptions,
+  type UploadSession,
+} from "./uploads.ts";
 
 type Fetch = (
   input: string | URL | Request,
@@ -36,17 +40,45 @@ interface Call {
   signal?: AbortSignal;
 }
 
-/** Client options. Without a key the client is anonymous: public reads only. publicUrl is the base presigned URLs are built on, for when browsers reach the server under another name than this client does; default url. */
-export interface TunnaOptions {
+/** What the pipeline would otherwise sign: the provider's backend passes it to presignRequest. */
+export interface PresignableRequest {
+  method: string;
+  path: readonly string[];
+  query?: readonly (readonly [string, string])[];
+  headers?: Record<string, string>; // the headers to bind, with their values
+}
+
+/** How a client without a key gets its URLs: asked once per request, it returns a presigned URL, typically from the application's backend (presignRequest there). What it throws reaches the caller unchanged. ADR-0013. */
+export type PresignProvider = (
+  request: PresignableRequest,
+  options: CallOptions,
+) => Promise<string>;
+
+/** presignRequest options: the request, and how long the URL lives, in seconds. */
+export interface PresignRequestOptions extends PresignableRequest {
+  expiresIn: number;
+}
+
+/** How requests are authorized: signed with a key, presigned by a provider, or neither (an anonymous client). Never both. */
+export type TunnaAuthOptions =
+  | { key: Key; presign?: never }
+  | { key?: never; presign: PresignProvider }
+  | { key?: undefined; presign?: undefined };
+
+/** The options every client takes, whatever authorizes its requests. */
+export interface TunnaBaseOptions {
   url: string;
   publicUrl?: string;
-  key?: Key;
   fetch?: Fetch;
   now?: Now;
 }
 
-/** Options for upload: part size (default 8 MiB), parts in flight (default 8; each worker holds up to two parts), and a progress callback in bytes. Aborting the signal stops the parts in flight and aborts the session on the server. */
+/** Client options. With a key the client signs; with presign it asks a provider for each URL and holds no secret (a browser page); with neither it is anonymous: public reads only. publicUrl is the base presigned URLs are built on, for when browsers reach the server under another name than this client does; default url. */
+export type TunnaOptions = TunnaBaseOptions & TunnaAuthOptions;
+
+/** Options for upload: part size (default 8 MiB), parts in flight (default 8; each worker holds up to two parts), and a progress callback in bytes. Aborting the signal stops the parts in flight and aborts the session on the server. session is an upload session that already exists: required when the client has no key, since only a key can initiate one; its part size wins over partSize, and bucket and key are then the session's. An empty source is a single PUT and needs no session, so a given one is aborted rather than left to expire. */
 export interface UploadOptions extends CallOptions {
+  session?: UploadSession;
   partSize?: number;
   concurrency?: number;
   contentType?: string;
@@ -54,8 +86,8 @@ export interface UploadOptions extends CallOptions {
   onProgress?: (sent: number, total: number) => void;
 }
 
-/** Options for presign; headers given here must be sent by whoever uses the URL. */
-export interface PresignOptions {
+/** Options for presign; headers given here must be sent by whoever uses the URL. With a provider, expiresIn is not passed on: how long a URL lives is the backend's decision. */
+export interface PresignOptions extends CallOptions {
   method: "GET" | "HEAD" | "PUT" | "DELETE";
   bucket: string;
   key: string;
@@ -107,6 +139,59 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
+export type Rule = readonly [method: string, path: readonly string[]];
+export const HEADER_FORM_ONLY: readonly Rule[] = [
+  ["POST", ["-", "uploads"]],
+  ["PUT", ["-", "buckets", "*"]],
+  ["PATCH", ["-", "buckets", "*"]],
+  ["POST", ["-", "keys"]],
+  ["PATCH", ["-", "keys", "*"]],
+];
+
+export function matchesPattern(
+  path: readonly string[],
+  pattern: readonly string[],
+): boolean {
+  return (
+    path.length === pattern.length &&
+    pattern.every((seg, i) => seg === "*" || seg === path[i])
+  );
+}
+
+export function presignAllowed(
+  method: string,
+  path: readonly string[],
+): boolean {
+  const m = method.toUpperCase();
+  return !HEADER_FORM_ONLY.some(
+    ([ruleMethod, pattern]) =>
+      (ruleMethod === "*" || ruleMethod === m) && matchesPattern(path, pattern),
+  );
+}
+
+export function assertPresignAllowed(
+  method: string,
+  path: readonly string[],
+): void {
+  if (!presignAllowed(method, path)) {
+    throw new TypeError(
+      `Presigning is not supported for ${method.toUpperCase()} /${path.join("/")}; use the header form instead`,
+    );
+  }
+}
+
+// boundHeaders is what a provider is told to bind: the headers the pipeline
+// would have signed, with their values.
+function boundHeaders(call: Call): Record<string, string> | undefined {
+  if (!call.signedHeaders?.length || !call.headers) return undefined;
+  const out: Record<string, string> = {};
+  for (const name of call.signedHeaders) {
+    const value = call.headers[name];
+    if (value !== undefined) out[name] = value;
+  }
+  return out;
+}
+
 /** A tunna client: one base URL and one key, with the routes grouped as buckets, objects, apiKeys and uploads. */
 export class Tunna {
   readonly objects: Objects;
@@ -119,6 +204,7 @@ export class Tunna {
   readonly #key: Key | undefined;
   readonly #now: Now;
   readonly #fetch: Fetch;
+  readonly #presign: PresignProvider | undefined;
 
   constructor(options: TunnaOptions) {
     if (!options.url) throw new TypeError("TunnaOptions.url must not be empty");
@@ -130,10 +216,15 @@ export class Tunna {
       if (!options.key.secret)
         throw new TypeError("TunnaOptions.key.secret must not be empty");
     }
+    if (options.key && options.presign)
+      throw new TypeError(
+        "TunnaOptions: give a key or a presign provider, not both",
+      );
 
     this.#base = options.url.replace(/\/+$/, "");
     this.#publicUrl = (options.publicUrl ?? options.url).replace(/\/+$/, "");
     this.#key = options.key;
+    this.#presign = options.presign;
     this.#fetch = options.fetch ?? defaultFetch.bind(globalThis);
     this.#now = options.now ?? defaultNow;
     this.objects = new Objects(this);
@@ -149,30 +240,53 @@ export class Tunna {
     source: Blob | Uint8Array<ArrayBuffer>,
     options?: UploadOptions,
   ): Promise<ObjectRecord> {
+    if (!this.#key && !options?.session) {
+      throw new TypeError(
+        "upload needs options.session when the client has no key: create the session on your backend (uploads.create) and pass it here",
+      );
+    }
+
     const callOpts: CallOptions = {
       ...(options?.signal && { signal: options.signal }),
     };
     const size = source instanceof Blob ? source.size : source.byteLength;
     if (size === 0) {
-      return await this.objects.put(bucket, key, source, options);
+      try {
+        return await this.objects.put(bucket, key, source, options);
+      } finally {
+        try {
+          // An empty source needs no session; one handed in would sit unused
+          // until it expires, and blocks deleting the bucket meanwhile.
+          if (options?.session) {
+            await this.uploads.abort(options.session.id);
+          }
+        } catch {}
+      }
     }
 
     const {
-      partSize = 8 << 20, // 8mb
+      partSize: wantedPartSize = 8 << 20,
       contentType,
       concurrency = 8,
       metadata,
       onProgress,
     } = options ?? {};
 
+    let session: UploadSession;
+    if (options?.session) {
+      session = options.session;
+    } else {
+      const sessionOptions: UploadCreateOptions = {
+        partSize: wantedPartSize,
+        ...callOpts,
+      };
+      if (contentType) sessionOptions.contentType = contentType;
+      if (metadata) sessionOptions.metadata = metadata;
+      session = await this.uploads.create(bucket, key, sessionOptions);
+    }
+
+    const partSize = session.partSize;
     const count = Math.ceil(size / partSize);
-    const sessionOptions: UploadCreateOptions = {
-      partSize,
-      ...callOpts,
-    };
-    if (contentType) sessionOptions.contentType = contentType;
-    if (metadata) sessionOptions.metadata = metadata;
-    const session = await this.uploads.create(bucket, key, sessionOptions);
 
     let next = 1;
     let sent = 0;
@@ -246,28 +360,24 @@ export class Tunna {
     }
   }
 
-  /** A presigned URL for one request, valid for expiresIn seconds. The URL is a credential: do not log it. */
+  /** A presigned URL for one object request, valid for expiresIn seconds. With a key it is signed here; with a provider it is asked for, which is a network call, hence the signal. The URL is a credential: do not log it. */
   async presign(options: PresignOptions): Promise<string> {
-    if (!this.#key) {
-      throw new TypeError("presign requires authentication");
+    options.signal?.throwIfAborted();
+
+    if (this.#presign) {
+      const asked: PresignableRequest = {
+        method: options.method,
+        path: [options.bucket, options.key],
+      };
+      if (options.headers) asked.headers = options.headers;
+      return this.#presign(
+        asked,
+        options.signal ? { signal: options.signal } : {},
+      );
     }
 
-    const expires = this.#now() + options.expiresIn;
-    const req: SigningRequest = {
-      method: options.method,
-      path: [options.bucket, options.key],
-    };
-    if (options.headers) {
-      req.headers = options.headers;
-      req.signedHeaders = Object.keys(options.headers);
-    }
-
-    return (
-      this.#publicUrl +
-      encodePath([options.bucket, options.key]) +
-      "?" +
-      (await presignQuery(req, this.#key, expires))
-    );
+    const { bucket, key, signal: _signal, ...rest } = options;
+    return this.presignRequest({ ...rest, path: [bucket, key] });
   }
 
   /** Resolves when the server answers GET /-/health. Sent unsigned, so it tells whether the server is up, not whether the key is good. */
@@ -318,12 +428,61 @@ export class Tunna {
     };
   }
 
+  /** A presigned URL for any request the server accepts in presigned form (spec/wire.md 3.4): the backend half of a presign provider. Needs a key. Refuses the routes that take their parameters from a body, which a URL cannot bind. The URL is a credential: do not log it. */
+  async presignRequest(options: PresignRequestOptions): Promise<string> {
+    if (!this.#key) {
+      throw new TypeError("presign requires authentication");
+    }
+    assertPresignAllowed(options.method, options.path);
+
+    const expires = this.#now() + options.expiresIn;
+    const req: SigningRequest = {
+      method: options.method,
+      path: options.path,
+    };
+    if (options.headers) {
+      req.headers = options.headers;
+      req.signedHeaders = Object.keys(options.headers);
+    }
+    if (options.query) {
+      req.query = options.query;
+    }
+
+    return (
+      this.#publicUrl +
+      encodePath(options.path) +
+      "?" +
+      (await presignQuery(req, this.#key, expires))
+    );
+  }
+
   /** @internal */
   async request(call: Call): Promise<Response> {
-    let url = this.#base + encodePath(call.path);
-    if (call.query) {
-      url += `?${encodeQuery(call.query)}`;
+    const provided = this.#presign !== undefined && !call.anonymous;
+    let url: string;
+    if (provided) {
+      const asked: PresignableRequest = {
+        method: call.method,
+        path: call.path,
+      };
+      if (call.query) {
+        asked.query = call.query;
+      }
+      const bound = boundHeaders(call);
+      if (bound) {
+        asked.headers = bound;
+      }
+      url = await this.#presign(
+        asked,
+        call.signal ? { signal: call.signal } : {},
+      );
+    } else {
+      url = this.#base + encodePath(call.path);
+      if (call.query) {
+        url += `?${encodeQuery(call.query)}`;
+      }
     }
+
     const headers = new Headers(call.headers);
     if (this.#key && !call.anonymous) {
       const now = this.#now();

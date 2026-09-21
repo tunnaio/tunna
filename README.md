@@ -20,7 +20,13 @@ the `-draft` suffix comes off the spec at that release.
 - **One binary, one directory.** Objects on disk, metadata in an embedded
   SQLite database, nothing else to run.
 - **Signed requests.** HMAC-SHA256 over a canonical request, in header form
-  and as presigned URLs; keys are admin or scoped per bucket.
+  and as presigned URLs; keys are admin or scoped per bucket. A presigned
+  URL authorizes exactly one request: the routes whose parameters live in a
+  body, which a URL cannot bind, refuse it.
+- **Browsers without a key.** A page uploads and reads through URLs its own
+  backend presigns, one per request, so the key never leaves the backend
+  and the backend's policy is the whole of what the page can do. The SDK
+  does this with one option.
 - **Uploads built for concurrency.** Numbered parts of a fixed size written
   at offset into one file, completed by count, with per-part checksums that
   fold into the object's. The SDK sends parts in parallel.

@@ -8,7 +8,8 @@ in Node 20.3 or later with no dependencies: the code uses `fetch`,
 `crypto.subtle` and `ReadableStream` and nothing else. ESM and CommonJS
 from one source (ADR-0010). Every route in the wire contract is covered,
 and every conformance case in `spec/conformance` is replayed through this
-package's encoder and signer.
+package's encoder and signer. In a browser it needs no key: see
+[In a browser, without a key](#in-a-browser-without-a-key).
 
 ```
 npm install tunna@alpha
@@ -98,8 +99,59 @@ same either way, because the host is not signed.
 | `tunna.apiKeys` | `list`, `get`, `create`, `patch`, `rotate`, `delete` (admin key only); `self` (any key: its own record) |
 | `tunna.uploads` | `create`, `putPart`, `get`, `complete`, `abort` (the raw routes) |
 | `tunna.upload` | the concurrent uploader on top of them |
-| `tunna.presign` | a presigned URL for one request |
+| `tunna.presign`, `tunna.presignRequest` | a presigned URL for one object request; for any request the server accepts presigned (the backend half of a provider, below) |
 | `tunna.health`, `tunna.version`, `tunna.limits` | is the server up; does it speak this package's spec (`compatible`); its part size bounds, presign lifetime and other limits. All sent unsigned |
+
+## In a browser, without a key
+
+A page should not hold a key. Give the client a `presign` function
+instead: it is asked for a URL before each request, and your backend, which
+holds the key, decides whether to sign.
+
+```ts
+// Backend (any framework). The key never leaves it.
+const tunna = new Tunna({ url, publicUrl, key });
+
+app.post("/api/uploads", async (req, res) => {          // start an upload for this user
+  const session = await tunna.uploads.create("uploads", `${req.user.id}/${req.body.name}`, { partSize: 8 << 20 });
+  remember(req.user.id, session.id);
+  res.json(session);
+});
+
+app.post("/api/presign", async (req, res) => {          // sign one request, or refuse
+  if (!mayDo(req.user, req.body)) return res.status(403).end();
+  res.send(await tunna.presignRequest({ ...req.body, expiresIn: 300 }));
+});
+
+// Page. No key: every request goes out on a URL the backend signed.
+const tunna = new Tunna({
+  url,
+  presign: (request, { signal }) =>
+    fetch("/api/presign", { method: "POST", body: JSON.stringify(request), headers: { "Content-Type": "application/json" }, signal })
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error("not allowed")))),
+});
+
+const session = await (await fetch("/api/uploads", { method: "POST", body: JSON.stringify({ name: file.name }) })).json();
+await tunna.upload(session.bucket, session.key, file, { session, onProgress });
+```
+
+`mayDo` is your policy, and it is the whole of what the page can do. A
+sound one is short: sign paths under `/-/uploads/<a session I created for
+this user>`, and object paths under this user's prefix. `request` is
+`{ method, path, query?, headers? }` with `path` as decoded segments, so
+`request.path[0]` is the bucket, or `"-"` for the control plane.
+
+The session comes from the backend because a page cannot start one: a
+presigned URL binds the method, the path, the query and the listed headers,
+not the body, and an upload's bucket, key and part size are in the body.
+The server refuses the presigned form on those routes
+(`presign_not_allowed`: session initiate, bucket create and patch, key
+create and patch), and `presignRequest` refuses to sign them. `session`
+crosses the wire as JSON, so turn `createdAt` and `expiresAt` back into
+`Date`s if you read them; `upload` needs only `id` and `partSize`.
+
+Each part costs one call to your backend before its PUT: a few
+milliseconds against the seconds an 8 MiB part takes, and the parts still go out concurrently.
 
 Errors: `TunnaError` is the server's answer, with `code` typed as the
 union generated from `spec/errors.json`; `TransportError` is no answer or

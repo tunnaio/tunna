@@ -18,11 +18,16 @@ export type { Key, SigningRequest, Mode } from "./sign.ts";
 export { Tunna } from "./client.ts";
 export type {
   TunnaOptions,
+  TunnaBaseOptions,
+  TunnaAuthOptions,
   CallOptions,
   UploadOptions,
   PresignOptions,
   ServerVersion,
   ServerLimits,
+  PresignProvider,
+  PresignRequestOptions,
+  PresignableRequest,
 } from "./client.ts";
 export { TunnaError, TransportError } from "./errors.ts";
 export type { BucketRecord } from "./buckets.ts";
