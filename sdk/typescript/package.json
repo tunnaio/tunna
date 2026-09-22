@@ -70,6 +70,16 @@
         "types": "./dist/crc32c.d.cts",
         "default": "./dist/crc32c.cjs"
       }
+    },
+    "./xhr": {
+      "import": {
+        "types": "./dist/xhr.d.mts",
+        "default": "./dist/xhr.mjs"
+      },
+      "require": {
+        "types": "./dist/xhr.d.cts",
+        "default": "./dist/xhr.cjs"
+      }
     }
   },
   "publishConfig": {

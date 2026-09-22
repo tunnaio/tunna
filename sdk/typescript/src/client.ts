@@ -21,7 +21,7 @@ import {
   type PresignProvider,
   type PresignRequestOptions,
 } from "./presign.ts";
-import type { CallOptions, Fetch, Now } from "./types.ts";
+import type { CallOptions, Fetch, Now, UploadProgress } from "./types.ts";
 import { encodePath, encodeQuery } from "./wire/encode.ts";
 import {
   authorization,
@@ -46,6 +46,7 @@ interface Call {
   body?: BodyInit | null;
   anonymous?: boolean; // send unsigned even when the client has a key
   signal?: AbortSignal;
+  onUploadProgress?: UploadProgress;
 }
 
 /** How requests are authorized: signed with a key, presigned by a provider, or neither (an anonymous client). Never both. */
@@ -184,15 +185,26 @@ export class Tunna {
     const count = Math.ceil(size / partSize);
 
     let next = 1;
-    let sent = 0;
+    let done = 0;
+    let inFlight = new Map<number, number>();
+    let reported = 0;
     const checksums = new Array<string>(count);
 
     type Prepared = { n: number; bytes: Uint8Array<ArrayBuffer> };
 
+    function report() {
+      let current = done;
+      for (const loaded of inFlight.values()) current += loaded;
+      if (current > reported) {
+        reported = current;
+        onProgress?.(reported, size);
+      }
+    }
+
     // prepare claims the next part number and reads its bytes. Each worker
     // keeps one part in flight and one being prepared, so the network never
     // waits on a disk read; that is the whole of the read-ahead.
-    const prepare = async (): Promise<Prepared | undefined> => {
+    async function prepare(): Promise<Prepared | undefined> {
       const n = next++;
       if (n > count) return undefined;
       const start = (n - 1) * partSize;
@@ -202,7 +214,7 @@ export class Tunna {
           ? new Uint8Array(await source.slice(start, end).arrayBuffer())
           : source.subarray(start, end);
       return { n, bytes };
-    };
+    }
 
     const abortController = new AbortController();
     const signal = callOpts.signal
@@ -217,12 +229,23 @@ export class Tunna {
         let tries = 1;
         for (;;) {
           try {
+            // A retry starts its count over. Nothing reads the entry between
+            // a failure and the retry today (no await in between), so this is
+            // the invariant, not a fix: an entry is the current attempt's count.
+            inFlight.set(n, 0);
             const part = await this.uploads.putPart(session.id, n, bytes, {
               signal,
+              ...(options?.onProgress && {
+                onProgress: (loaded) => {
+                  inFlight.set(n, loaded);
+                  report();
+                },
+              }),
             });
+            inFlight.delete(n);
+            done += bytes.byteLength;
+            report();
             checksums[n - 1] = part.checksum;
-            sent += bytes.byteLength;
-            onProgress?.(sent, size);
             break;
           } catch (err) {
             if (tries <= 2 && err instanceof TransportError) {
@@ -392,6 +415,9 @@ export class Tunna {
         headers,
         ...(call.body instanceof ReadableStream ? { duplex: "half" } : {}),
         ...(call.signal && { signal: call.signal }),
+        ...(call.onUploadProgress && {
+          onUploadProgress: call.onUploadProgress,
+        }),
       });
     } catch (err) {
       if (call.signal?.aborted) throw err;

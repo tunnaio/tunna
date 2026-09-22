@@ -1,5 +1,5 @@
 import type { Tunna } from "../client.ts";
-import type { CallOptions } from "../types.ts";
+import type { CallOptions, UploadProgress } from "../types.ts";
 import { crc32c, encodeChecksum } from "../wire/crc32c.ts";
 import { toObject, type ObjectRecord, type WireObject } from "./objects.ts";
 
@@ -44,6 +44,10 @@ export interface UploadCreateOptions extends CallOptions {
   partSize: number;
   contentType?: string;
   metadata?: Record<string, string>;
+}
+
+export interface UploadPartOptions extends CallOptions {
+  onProgress?: UploadProgress;
 }
 
 function toUploadSession(s: WireUploadSession): UploadSession {
@@ -103,7 +107,7 @@ export class Uploads {
     id: string,
     n: number,
     bytes: Uint8Array<ArrayBuffer>,
-    options?: CallOptions,
+    options?: UploadPartOptions,
   ): Promise<UploadPart> {
     const checksum = encodeChecksum(crc32c(bytes));
     const res = await this.#client.request({
@@ -113,6 +117,7 @@ export class Uploads {
       signedHeaders: ["X-Tunna-Checksum"],
       body: bytes,
       ...(options?.signal && { signal: options.signal }),
+      ...(options?.onProgress && { onUploadProgress: options.onProgress }),
     });
     const body: WireUploadPart = await res.json();
     return toUploadPart(body);

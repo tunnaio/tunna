@@ -5,9 +5,11 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
+export type UploadProgress = (loaded: number, total: number) => void;
+
 export type Fetch = (
   input: string | URL | Request,
-  init?: RequestInit,
+  init?: RequestInit & { onUploadProgress?: UploadProgress },
 ) => Promise<Response>;
 
 export type Now = () => number;

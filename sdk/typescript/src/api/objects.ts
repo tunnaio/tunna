@@ -1,5 +1,5 @@
 import type { Tunna } from "../client.ts";
-import type { CallOptions } from "../types.ts";
+import type { CallOptions, UploadProgress } from "../types.ts";
 import { crc32c, encodeChecksum } from "../wire/crc32c.ts";
 import { TransportError } from "../errors.ts";
 
@@ -46,6 +46,7 @@ export interface ObjectResponse {
 export interface ObjectPutOptions extends CallOptions {
   contentType?: string;
   metadata?: Record<string, string>;
+  onProgress?: UploadProgress;
 }
 
 /** A byte range for GET: start inclusive, end inclusive when given. */
@@ -186,6 +187,7 @@ export class Objects {
       headers,
       signedHeaders: Object.keys(headers),
       ...(options?.signal && { signal: options.signal }),
+      ...(options?.onProgress && { onUploadProgress: options.onProgress }),
     });
     const record: WireObject = await res.json();
     return toObject(record);

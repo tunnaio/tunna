@@ -347,3 +347,72 @@ describe("upload of an empty source into a given session", () => {
     expect(state.puts).toEqual(["/b/k"]);
   });
 });
+
+// ADR-0010, "Upload progress in bytes": with a transport that reports, upload's
+// onProgress is byte accurate: finished parts plus what the parts in flight
+// have reported, and it never decreases.
+describe("upload progress in bytes", () => {
+  type Reporting = RequestInit & { onUploadProgress?: (loaded: number, total: number) => void };
+
+  // A transport that reports a quarter, a half and the whole of each part
+  // before handing the request on, as XMLHttpRequest would while sending.
+  function reporting(inner: typeof globalThis.fetch) {
+    return (async (input: string | URL | Request, init?: Reporting) => {
+      const body = init?.body;
+      if (init?.onUploadProgress && body instanceof Uint8Array) {
+        const total = body.byteLength;
+        for (const fraction of [0.25, 0.5, 1]) {
+          init.onUploadProgress(Math.floor(total * fraction), total);
+          await new Promise((r) => setTimeout(r, 1));
+        }
+      }
+      return inner(input, init);
+    }) as typeof globalThis.fetch;
+  }
+
+  const nonDecreasing = (values: number[]) => values.every((v, i) => i === 0 || v >= values[i - 1]!);
+
+  test("reports more finely than once per part, never decreases, never exceeds the total, ends at it", async () => {
+    const { fetch } = fakeServer();
+    const tunna = new Tunna({ url: "http://store.test", key, fetch: reporting(fetch) });
+    const data = generate(31, 3 * partSize + 1000);
+    const sent: number[] = [];
+
+    await tunna.upload("b", "k", data, { partSize, concurrency: 2, onProgress: (s, total) => (sent.push(s), expect(total).toBe(data.length)) });
+
+    expect(sent.length).toBeGreaterThan(4); // four parts; a reporting transport gives more steps than that
+    expect(sent[0]!).toBeLessThan(partSize); // the first step is inside a part, not at its end
+    expect(nonDecreasing(sent)).toBe(true);
+    expect(Math.max(...sent)).toBe(data.length);
+    expect(sent.at(-1)).toBe(data.length);
+  });
+
+  test("a retried part starts again from zero, and the reported value holds rather than running backwards", async () => {
+    const { fetch, state } = fakeServer({ failPart: { n: 2, times: 1, how: "throw" } });
+    const tunna = new Tunna({ url: "http://store.test", key, fetch: reporting(fetch) });
+    const data = generate(32, 3 * partSize);
+    const sent: number[] = [];
+
+    await tunna.upload("b", "k", data, { partSize, concurrency: 1, onProgress: (s) => sent.push(s) });
+
+    expect(state.attempts.get(2)).toBe(2); // the retry really happened, after part 2 had reported all of its bytes once
+    expect(nonDecreasing(sent)).toBe(true);
+    expect(Math.max(...sent)).toBe(data.length); // and the first attempt's bytes were not counted twice
+    expect(sent.at(-1)).toBe(data.length);
+
+    // Sequentially, the retry re-reports 1.25, 1.50 and 2.00 parts, all held
+    // by the mark: the bar sits at two parts until part 3 sends real bytes.
+    const twoParts = 2 * partSize;
+    expect(sent.filter((v) => v === twoParts)).toHaveLength(1);
+  });
+
+  test("with a transport that reports nothing it is once per part, as before", async () => {
+    const { tunna } = fakeServer();
+    const data = generate(33, 2 * partSize + 5);
+    const sent: number[] = [];
+    await tunna.upload("b", "k", data, { partSize, concurrency: 2, onProgress: (s) => sent.push(s) });
+    expect(sent).toHaveLength(3);
+    expect(nonDecreasing(sent)).toBe(true);
+    expect(sent.at(-1)).toBe(data.length);
+  });
+});

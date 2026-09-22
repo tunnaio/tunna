@@ -102,6 +102,29 @@ same either way, because the host is not signed.
 | `tunna.presign`, `tunna.presignRequest` | a presigned URL for one object request; for any request the server accepts presigned (the backend half of a provider, below) |
 | `tunna.health`, `tunna.version`, `tunna.limits` | is the server up; does it speak this package's spec (`compatible`); its part size bounds, presign lifetime and other limits. All sent unsigned |
 
+## Upload progress in bytes
+
+`upload`'s `onProgress(sent, total)` moves once per part: for a 2.8 GB
+file that is 350 steps, for a 20 MB file it is three, and `objects.put`
+has no progress at all. `fetch` cannot report upload bytes; in a browser,
+`XMLHttpRequest` can. The `tunna/xhr` subpath is a transport that uses
+it for exactly the requests that ask:
+
+```ts
+import { xhrFetch } from "tunna/xhr";
+
+const tunna = new Tunna({ url, presign, fetch: xhrFetch });
+await tunna.upload("photos", "big.bin", file, { onProgress: (sent, total) => bar.value = sent / total });
+await tunna.objects.put("photos", "a.jpg", file, { onProgress: (sent, total) => {} });
+```
+
+With it, `onProgress` reports bytes as the browser sends them, from every
+part in flight, and never runs backwards: a retried part starts again from
+zero and the bar holds until real progress passes where it was. Requests
+without a listener, downloads included, still go through `fetch` and keep
+streaming. Under Node there is no `XMLHttpRequest` and `xhrFetch` is plain
+`fetch`, so the same code runs everywhere.
+
 ## In a browser, without a key
 
 A page should not hold a key. Give the client a `presign` function
@@ -199,6 +222,7 @@ bun run smoke            # build, then plain Node imports both formats
 | Path | What |
 |------|------|
 | `src/client.ts` | `Tunna`: the request pipeline, `upload`, `presign` and `presignRequest`. |
+| `src/xhr.ts` | The `tunna/xhr` transport: upload progress through `XMLHttpRequest`. |
 | `src/types.ts`, `src/presign.ts` | The types every file shares; the presign provider types and the rule for what may be presigned. |
 | `src/api/` | One file per route group, all one shape: `buckets`, `objects`, `api-keys`, `uploads`, and `server` (version and limits). |
 | `src/wire/encode.ts` | Segment, path and query encoding for the canonical request (`spec/vectors/encoding.json`). |

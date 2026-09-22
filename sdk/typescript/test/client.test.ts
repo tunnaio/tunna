@@ -752,3 +752,51 @@ describe("presignRequest guard", () => {
     expect(allowed).toBeGreaterThanOrEqual(8);
   });
 });
+
+// ADR-0010, "Upload progress in bytes": the pipeline hands a listener to the
+// transport in the fetch init; a standard fetch ignores it.
+describe("upload progress in the pipeline", () => {
+  type Init = Seen["init"] & { onUploadProgress?: (loaded: number, total: number) => void };
+  const wire = { bucket: "photos", key: "a.txt", size: 3, content_type: "text/plain", checksum: "crc32c=AAAAAA==", created_at: 1 };
+
+  test("objects.put with onProgress passes onUploadProgress to fetch, and what the transport reports reaches the caller", async () => {
+    const { tunna, seen } = client((s) => {
+      const report = (s.init as Init).onUploadProgress;
+      report?.(1, 3);
+      report?.(3, 3);
+      return json(201, wire);
+    });
+    const progress: [number, number][] = [];
+    await tunna.objects.put("photos", "a.txt", "abc", { onProgress: (sent, total) => progress.push([sent, total]) });
+    expect(typeof (seen[0]!.init as Init).onUploadProgress).toBe("function");
+    expect(progress).toEqual([[1, 3], [3, 3]]);
+  });
+
+  test("without a listener the init has no such key at all", async () => {
+    const { tunna, seen } = client(() => json(201, wire));
+    await tunna.objects.put("photos", "a.txt", "abc");
+    await tunna.buckets.list().catch(() => {});
+    expect("onUploadProgress" in seen[0]!.init).toBe(false);
+    expect("onUploadProgress" in seen[1]!.init).toBe(false);
+  });
+
+  test("the listener is for the call: it is not signed, sent as a header, or put in the body", async () => {
+    const { tunna, seen } = client(() => json(201, wire));
+    await tunna.objects.put("photos", "a.txt", "abc", { onProgress: () => {}, metadata: { title: "t" } });
+    const names = [...new Headers(seen[0]!.init.headers).keys()];
+    expect(names.some((n) => n.includes("progress"))).toBe(false);
+    expect(new Headers(seen[0]!.init.headers).get("Authorization")).not.toContain("progress");
+  });
+
+  test("uploads.putPart takes onProgress the same way", async () => {
+    const { tunna, seen } = client((s) => {
+      (s.init as Init).onUploadProgress?.(2, 4);
+      return json(200, { part: 1, size: 4, checksum: "crc32c=AAAAAA==" });
+    });
+    const progress: [number, number][] = [];
+    const { signal } = new AbortController();
+    await tunna.uploads.putPart("up_1", 1, new Uint8Array(4), { signal, onProgress: (sent, total) => progress.push([sent, total]) });
+    expect(progress).toEqual([[2, 4]]);
+    expect(seen[0]!.init.signal).toBe(signal);
+  });
+});

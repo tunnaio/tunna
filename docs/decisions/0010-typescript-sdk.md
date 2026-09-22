@@ -201,15 +201,20 @@ sdk/typescript/
 ├── tsdown.config.ts      entry points, formats esm and cjs, dts
 ├── tsconfig.json         strict, ES2022 target, NodeNext resolution
 ├── dist/                 built output, not committed
-├── src/
+├── src/                  (reorganised 2026-09-22: folders by what a file is)
 │   ├── index.ts          public surface
-│   ├── client.ts         Tunna class; buckets, objects, keys, uploads groups
-│   ├── sign.ts           canonical string, HMAC, header and presign forms
-│   ├── encode.ts         segment, path, query encoding
-│   ├── crc32c.ts         table, update, combine, wire form
-│   ├── upload.ts         the concurrent upload helper
+│   ├── client.ts         Tunna: the request pipeline, upload, presign, presignRequest
+│   ├── types.ts          CallOptions and the other types every file shares
+│   ├── presign.ts        the provider types and the rule for what may be presigned
 │   ├── errors.ts         TunnaError, TransportError
-│   └── errors.generated.ts   from spec/errors.json; do not edit
+│   ├── errors.generated.ts   from spec/errors.json; do not edit
+│   ├── api/              one file per route group, all one shape: wire types, public types, a class
+│   │   ├── buckets.ts, objects.ts, api-keys.ts, uploads.ts
+│   │   └── server.ts     version and limits
+│   └── wire/             the primitives: no client, each a subpath export
+│       ├── sign.ts       canonical string, HMAC, header and presign forms
+│       ├── encode.ts     segment, path, query encoding
+│       └── crc32c.ts     table, update, combine, wire form
 ├── scripts/
 │   └── gen-errors.ts     reads ../../spec/errors.json
 └── test/                 bun test
@@ -272,6 +277,61 @@ Probe 2026-09-19, Node 24 and Bun 1.4 against a server that never answers:
 The shape of the rule carries to other languages; its spelling does not
 (SDKs share the contract, never the API shape). A Go client takes
 `context.Context` first and has no options object for cancellation at all.
+
+### Upload progress in bytes (added 2026-09-21)
+
+`fetch` has no upload progress. A streaming request body, counted as it is
+pulled, is the only way inside `fetch`, and it is Chromium only, HTTP/2
+only, and counts what was buffered rather than what was sent.
+`XMLHttpRequest` has `upload.onprogress` in every browser. A console built
+on the SDK worked around this by uploading small files with its own XHR
+and large ones with `upload`, whose `onProgress` moved once per 8 MiB
+part: three jumps for a 20 MB file, nothing at all for `objects.put`.
+
+Decision: **the transport stays `fetch`, and byte progress is something a
+transport may report.**
+
+- The pipeline passes one extra field in the `fetch` init,
+  `onUploadProgress(loaded, total)`, when the call has a listener. A
+  standard `fetch` ignores init keys it does not know, so nothing changes
+  for anyone who does not opt in.
+- `tunna/xhr` exports `xhrFetch`, a `fetch`-shaped function for browsers:
+  `new Tunna({ url, fetch: xhrFetch })`. A request that carries
+  `onUploadProgress` goes out through `XMLHttpRequest`; **every other
+  request is handed to the real `fetch`**, so downloads still stream
+  instead of being buffered whole, which is what an XHR-for-everything
+  adapter would do to a 2 GB `objects.get`. It touches no global at import
+  time, so importing it under Node is harmless; calling it without
+  `XMLHttpRequest` falls back to `fetch`.
+- `objects.put` and `uploads.putPart` take `onProgress`. `upload`'s
+  `onProgress(sent, total)` becomes byte-accurate when the transport
+  reports, and stays once per part when it does not. `sent` is the bytes
+  of finished parts plus the bytes reported so far by the parts in flight,
+  and **it never decreases**: a part that is retried starts again from
+  zero, and the reported value holds until the sum passes it. A bar that
+  waits is honest; one that runs backwards is not.
+
+It beat making XHR the transport in browsers. That is a second request
+pipeline: error mapping, abort, the presign provider branch and header
+parsing each written twice and kept in step; it breaks the platform rule
+above (A1), since XHR exists in browsers only; and it would bypass the
+`fetch` option that every test here and some callers inject. It also beat
+leaving it to callers, which is what produced the console's split.
+
+It is a subpath, not a package of its own (`@tunna/xhr` was considered,
+2026-09-22). The adapter's whole contract is one init field the pipeline
+passes: a private agreement between two files, which a second package
+would turn into a public one to version and document, and which drifts
+by construction once the two ship on their own tags. A subpath costs
+nothing to those who never import it, is what `tunna/sign` and the other
+primitives already are, and rides the one release. A scoped package earns
+its place when a piece has dependencies a Node user must not install, or
+when there is a family of them with their own cadence; the `@tunna` scope
+is reserved for that day.
+
+The cost: one public subpath, and an init field that is not in the
+`fetch` standard. If the standard ever gains upload progress, the adapter
+becomes a no-op and the field is already in the right place.
 
 ### Fixture server
 

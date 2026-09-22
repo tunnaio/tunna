@@ -9,6 +9,7 @@ export default defineConfig({
     sign: "src/wire/sign.ts",
     encode: "src/wire/encode.ts",
     crc32c: "src/wire/crc32c.ts",
+    xhr: "src/xhr.ts",
   },
   format: ["esm", "cjs"],
   platform: "neutral",
