@@ -11,27 +11,28 @@ export type {
   ErrorStageName,
 } from "./errors.generated.ts";
 
-export * as encode from "./encode.ts";
-export * as sign from "./sign.ts";
-export * as crc32c from "./crc32c.ts";
-export type { Key, SigningRequest, Mode } from "./sign.ts";
+export * as encode from "./wire/encode.ts";
+export * as sign from "./wire/sign.ts";
+export * as crc32c from "./wire/crc32c.ts";
+export type { Key, SigningRequest, Mode } from "./wire/sign.ts";
 export { Tunna } from "./client.ts";
 export type {
   TunnaOptions,
   TunnaBaseOptions,
   TunnaAuthOptions,
-  CallOptions,
   UploadOptions,
+} from "./client.ts";
+export type { CallOptions } from "./types.ts";
+export type {
   PresignOptions,
-  ServerVersion,
-  ServerLimits,
   PresignProvider,
   PresignRequestOptions,
   PresignableRequest,
-} from "./client.ts";
+} from "./presign.ts";
+export type { ServerVersion, ServerLimits } from "./api/server.ts";
 export { TunnaError, TransportError } from "./errors.ts";
-export type { BucketRecord } from "./buckets.ts";
-export { withSecret } from "./api-keys.ts";
+export type { BucketRecord } from "./api/buckets.ts";
+export { withSecret } from "./api/api-keys.ts";
 export type {
   Access,
   ApiKey,
@@ -40,7 +41,7 @@ export type {
   ApiKeyCreateOptions,
   ApiKeyPatchOptions,
   WithSecret,
-} from "./api-keys.ts";
+} from "./api/api-keys.ts";
 export type {
   ObjectRecord,
   ObjectInfo,
@@ -50,9 +51,9 @@ export type {
   ObjectListOptions,
   ObjectPage,
   ObjectPageOptions,
-} from "./objects.ts";
+} from "./api/objects.ts";
 export type {
   UploadSession,
   UploadPart,
   UploadCreateOptions,
-} from "./uploads.ts";
+} from "./api/uploads.ts";

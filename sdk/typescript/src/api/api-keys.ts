@@ -1,4 +1,5 @@
-import type { CallOptions, Tunna } from "./client.ts";
+import type { Tunna } from "../client.ts";
+import type { CallOptions } from "../types.ts";
 
 /** What a scoped key may do in a bucket; write includes read (ADR-0008). */
 export type Access = "read" | "write";

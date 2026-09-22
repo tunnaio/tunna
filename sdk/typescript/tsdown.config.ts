@@ -6,9 +6,9 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
-    sign: "src/sign.ts",
-    encode: "src/encode.ts",
-    crc32c: "src/crc32c.ts",
+    sign: "src/wire/sign.ts",
+    encode: "src/wire/encode.ts",
+    crc32c: "src/wire/crc32c.ts",
   },
   format: ["esm", "cjs"],
   platform: "neutral",

@@ -220,6 +220,13 @@ To revisit:
   refuse that PUT; it should sign the object path the session names too.
 - `presign` takes a signal (added 2026-09-21): with a provider it is a
   network call. `presignRequest` does not: it is a local HMAC.
+- Extracting `upload` from the class into `uploader.ts` as a function
+  that takes what it needs (`{ objects, uploads, hasKey }`) rather than
+  reading private fields, which `#` fields do not allow from outside the
+  class body and `bind` does not change. It needs no secret, only whether
+  there is one. Shaped 2026-09-22, not done: nothing forces it yet. A test
+  that wants a fake `uploads` reporting bytes on a schedule, or `client.ts`
+  growing past readability, would.
 - A separate, narrower client class for provider mode (P5), if the list of
   methods that cannot work there grows, or users keep meeting the runtime
   error: then the types are lying often enough to matter.

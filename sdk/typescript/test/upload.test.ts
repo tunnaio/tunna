@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { combine, crc32c, encodeChecksum, parseChecksum } from "../src/crc32c.ts";
+import { combine, crc32c, encodeChecksum, parseChecksum } from "../src/wire/crc32c.ts";
 import { Tunna, TunnaError } from "../src/index.ts";
 import { generate } from "./vectors.ts";
 

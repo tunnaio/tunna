@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { encodePath, encodeQuery } from "../src/encode.ts";
+import { encodePath, encodeQuery } from "../src/wire/encode.ts";
 import { SPEC_VERSION } from "../src/errors.generated.ts";
 import {
   authorization,
@@ -18,7 +18,7 @@ import {
   presignQuery,
   type Key,
   type SigningRequest as SigRequest,
-} from "../src/sign.ts";
+} from "../src/wire/sign.ts";
 import { FixtureServer } from "./fixture-server.ts";
 import { generate, loadSpec, specVersion } from "./vectors.ts";
 

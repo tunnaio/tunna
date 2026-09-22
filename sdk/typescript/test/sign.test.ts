@@ -6,7 +6,7 @@ import {
   signature,
   type Key,
   type SigningRequest,
-} from "../src/sign.ts";
+} from "../src/wire/sign.ts";
 import { loadSpec, specVersion } from "./vectors.ts";
 
 type Case = {

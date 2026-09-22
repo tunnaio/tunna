@@ -1,27 +1,35 @@
-import { ApiKeys } from "./api-keys.ts";
-import { Buckets } from "./buckets.ts";
-import { encodePath, encodeQuery } from "./encode.ts";
+import { ApiKeys } from "./api/api-keys.ts";
+import { Buckets } from "./api/buckets.ts";
+import { Objects, type ObjectRecord } from "./api/objects.ts";
+import type {
+  ServerLimits,
+  ServerVersion,
+  WireServerLimits,
+  WireServerVersion,
+} from "./api/server.ts";
+import {
+  Uploads,
+  type UploadCreateOptions,
+  type UploadSession,
+} from "./api/uploads.ts";
 import { isErrorCode, SPEC_VERSION } from "./errors.generated.ts";
 import { TransportError, TunnaError } from "./errors.ts";
-import { Objects, type ObjectRecord } from "./objects.ts";
+import {
+  assertPresignAllowed,
+  type PresignableRequest,
+  type PresignOptions,
+  type PresignProvider,
+  type PresignRequestOptions,
+} from "./presign.ts";
+import type { CallOptions, Fetch, Now } from "./types.ts";
+import { encodePath, encodeQuery } from "./wire/encode.ts";
 import {
   authorization,
   HEADER_DATE,
   presignQuery,
   type Key,
   type SigningRequest,
-} from "./sign.ts";
-import {
-  Uploads,
-  type UploadCreateOptions,
-  type UploadSession,
-} from "./uploads.ts";
-
-type Fetch = (
-  input: string | URL | Request,
-  init?: RequestInit,
-) => Promise<Response>;
-type Now = () => number;
+} from "./wire/sign.ts";
 
 function defaultNow() {
   return Math.floor(Date.now() / 1000);
@@ -38,25 +46,6 @@ interface Call {
   body?: BodyInit | null;
   anonymous?: boolean; // send unsigned even when the client has a key
   signal?: AbortSignal;
-}
-
-/** What the pipeline would otherwise sign: the provider's backend passes it to presignRequest. */
-export interface PresignableRequest {
-  method: string;
-  path: readonly string[];
-  query?: readonly (readonly [string, string])[];
-  headers?: Record<string, string>; // the headers to bind, with their values
-}
-
-/** How a client without a key gets its URLs: asked once per request, it returns a presigned URL, typically from the application's backend (presignRequest there). What it throws reaches the caller unchanged. ADR-0013. */
-export type PresignProvider = (
-  request: PresignableRequest,
-  options: CallOptions,
-) => Promise<string>;
-
-/** presignRequest options: the request, and how long the URL lives, in seconds. */
-export interface PresignRequestOptions extends PresignableRequest {
-  expiresIn: number;
 }
 
 /** How requests are authorized: signed with a key, presigned by a provider, or neither (an anonymous client). Never both. */
@@ -84,100 +73,6 @@ export interface UploadOptions extends CallOptions {
   contentType?: string;
   metadata?: Record<string, string>;
   onProgress?: (sent: number, total: number) => void;
-}
-
-/** Options for presign; headers given here must be sent by whoever uses the URL. With a provider, expiresIn is not passed on: how long a URL lives is the backend's decision. */
-export interface PresignOptions extends CallOptions {
-  method: "GET" | "HEAD" | "PUT" | "DELETE";
-  bucket: string;
-  key: string;
-  expiresIn: number;
-  headers?: Record<string, string>;
-}
-
-/** GET /-/version as it is on the wire (spec/wire.md 4). */
-interface WireServerVersion {
-  version: string;
-  spec: string;
-}
-
-/** The server's build and the spec it implements; compatible is whether that spec equals this package's SPEC_VERSION. */
-export interface ServerVersion {
-  version: string;
-  spec: string;
-  compatible: boolean;
-}
-
-/** GET /-/limits as it is on the wire (spec/wire.md 11.1). */
-interface WireServerLimits {
-  object_size_max: number;
-  part_size_min: number;
-  part_size_max: number;
-  parts_max: number;
-  list_limit_max: number;
-  key_length_max: number;
-  presign_lifetime_max_seconds: number;
-  upload_expiry_seconds: number;
-  clock_skew_seconds: number;
-}
-
-/** This deployment's limits: sizes in bytes, durations in seconds. They are what the server enforces, so an operator's change shows here. */
-export interface ServerLimits {
-  objectSizeMax: number;
-  partSizeMin: number;
-  partSizeMax: number;
-  partsMax: number;
-  listLimitMax: number;
-  keyLengthMax: number;
-  presignLifetimeMaxSeconds: number;
-  uploadExpirySeconds: number;
-  clockSkewSeconds: number;
-}
-
-/** Per-call options every method accepts. An aborted call rejects with the signal's reason (an AbortError by default), never a TransportError. */
-export interface CallOptions {
-  signal?: AbortSignal;
-}
-
-export type Rule = readonly [method: string, path: readonly string[]];
-export const HEADER_FORM_ONLY: readonly Rule[] = [
-  ["POST", ["-", "uploads"]],
-  ["PUT", ["-", "buckets", "*"]],
-  ["PATCH", ["-", "buckets", "*"]],
-  ["POST", ["-", "keys"]],
-  ["PATCH", ["-", "keys", "*"]],
-];
-
-export function matchesPattern(
-  path: readonly string[],
-  pattern: readonly string[],
-): boolean {
-  return (
-    path.length === pattern.length &&
-    pattern.every((seg, i) => seg === "*" || seg === path[i])
-  );
-}
-
-export function presignAllowed(
-  method: string,
-  path: readonly string[],
-): boolean {
-  const m = method.toUpperCase();
-  return !HEADER_FORM_ONLY.some(
-    ([ruleMethod, pattern]) =>
-      (ruleMethod === "*" || ruleMethod === m) && matchesPattern(path, pattern),
-  );
-}
-
-export function assertPresignAllowed(
-  method: string,
-  path: readonly string[],
-): void {
-  if (!presignAllowed(method, path)) {
-    throw new TypeError(
-      `Presigning is not supported for ${method.toUpperCase()} /${path.join("/")}; use the header form instead`,
-    );
-  }
 }
 
 // boundHeaders is what a provider is told to bind: the headers the pipeline

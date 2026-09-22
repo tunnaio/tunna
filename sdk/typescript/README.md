@@ -198,11 +198,12 @@ bun run smoke            # build, then plain Node imports both formats
 
 | Path | What |
 |------|------|
-| `src/client.ts` | `Tunna`, the request pipeline, `upload` and `presign`. |
-| `src/buckets.ts`, `objects.ts`, `api-keys.ts`, `uploads.ts` | One group per section of the wire contract. |
-| `src/encode.ts` | Segment, path and query encoding for the canonical request (`spec/vectors/encoding.json`). |
-| `src/sign.ts` | Canonical string, HMAC-SHA256, header and presigned forms (`spec/vectors/signing.json`). |
-| `src/crc32c.ts` | CRC-32C, combine, and the `crc32c=` wire form (`spec/vectors/crc32c.json`). |
+| `src/client.ts` | `Tunna`: the request pipeline, `upload`, `presign` and `presignRequest`. |
+| `src/types.ts`, `src/presign.ts` | The types every file shares; the presign provider types and the rule for what may be presigned. |
+| `src/api/` | One file per route group, all one shape: `buckets`, `objects`, `api-keys`, `uploads`, and `server` (version and limits). |
+| `src/wire/encode.ts` | Segment, path and query encoding for the canonical request (`spec/vectors/encoding.json`). |
+| `src/wire/sign.ts` | Canonical string, HMAC-SHA256, header and presigned forms (`spec/vectors/signing.json`). |
+| `src/wire/crc32c.ts` | CRC-32C, combine, and the `crc32c=` wire form (`spec/vectors/crc32c.json`). |
 | `src/errors.ts` | `TunnaError`, `TransportError`. |
 | `src/errors.generated.ts` | `ErrorCode`, status and stage tables, `SPEC_VERSION`. Generated. |
 | `test/` | Vector tests, the client and upload helper against an injected `fetch`, the conformance runner, the plain-Node smoke scripts. |

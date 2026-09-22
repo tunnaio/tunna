@@ -1,5 +1,6 @@
-import type { CallOptions, Tunna } from "./client.ts";
-import { crc32c, encodeChecksum } from "./crc32c.ts";
+import type { Tunna } from "../client.ts";
+import type { CallOptions } from "../types.ts";
+import { crc32c, encodeChecksum } from "../wire/crc32c.ts";
 import { toObject, type ObjectRecord, type WireObject } from "./objects.ts";
 
 interface WireUploadSession {

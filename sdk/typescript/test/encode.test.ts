@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { encodePath, encodeQuery, encodeSegment } from "../src/encode.ts";
+import { encodePath, encodeQuery, encodeSegment } from "../src/wire/encode.ts";
 import { loadSpec, specVersion } from "./vectors.ts";
 
 type Case =

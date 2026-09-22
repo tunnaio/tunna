@@ -1,6 +1,7 @@
-import type { CallOptions, Tunna } from "./client.ts";
-import { crc32c, encodeChecksum } from "./crc32c.ts";
-import { TransportError } from "./errors.ts";
+import type { Tunna } from "../client.ts";
+import type { CallOptions } from "../types.ts";
+import { crc32c, encodeChecksum } from "../wire/crc32c.ts";
+import { TransportError } from "../errors.ts";
 
 /** The object record as it is on the wire (spec/wire.md 5.3). */
 export interface WireObject {

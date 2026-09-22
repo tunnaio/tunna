@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Tunna, TunnaError, TransportError } from "../src/index.ts";
-import { authorization } from "../src/sign.ts";
+import { authorization } from "../src/wire/sign.ts";
 
 // The request pipeline with an injected fetch: URL, signing, error mapping.
 // The wire itself is covered by the conformance test; this pins what the
@@ -474,7 +474,7 @@ describe("limits", () => {
 // ADR-0013. The backend half: presignRequest is the general form of presign.
 describe("presignRequest", () => {
   test("signs any path, binding the given headers, on the public base", async () => {
-    const { presignQuery } = await import("../src/sign.ts");
+    const { presignQuery } = await import("../src/wire/sign.ts");
     const fetch = (async () => json(200, {})) as unknown as typeof globalThis.fetch;
     const tunna = new Tunna({ url: "http://tunna:8000", publicUrl: "https://store.example.com", key, fetch, now: () => now });
     const headers = { "X-Tunna-Checksum": "crc32c=AAAAAA==" };

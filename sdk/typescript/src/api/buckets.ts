@@ -1,4 +1,5 @@
-import type { CallOptions, Tunna } from "./client.ts";
+import type { Tunna } from "../client.ts";
+import type { CallOptions } from "../types.ts";
 
 interface WireBucket {
   name: string;
