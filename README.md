@@ -80,7 +80,7 @@ See [`sdk/typescript`](sdk/typescript/README.md) for the rest.
 | [`sig/`](sig/), [`internal/`](internal/), [`cmd/tunna`](cmd/tunna/) | The server. [ADR-0005](docs/decisions/0005-package-layout.md) describes the package layout. |
 | [`cmd/tunna-fixtures`](cmd/tunna-fixtures/) | The API in the conformance fixture state, for SDK conformance runners. |
 | [`cmd/tunna-load`](cmd/tunna-load/) | Load generator. |
-| [`sdk/typescript`](sdk/typescript/README.md) | The TypeScript client: browser and Node, no dependencies. |
+| [`sdk/typescript`](sdk/typescript/README.md) | The TypeScript client: browser and Node, no dependencies; in a browser it works without a key and reports upload progress in bytes. |
 
 ## Develop
 

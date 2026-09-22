@@ -198,7 +198,8 @@ ladder that refused: 1 syntax, 2 authentication, 3 authorization,
 
 Subpath exports `tunna/sign`, `tunna/encode` and `tunna/crc32c` give the
 primitives without the client, for anyone building on the wire contract
-directly.
+directly; `tunna/xhr` is the browser transport above. Nothing under a
+subpath is loaded unless imported.
 
 ## Develop
 
