@@ -146,6 +146,34 @@ Harder:
   if it needs the body, stage 5; if it is about the world after the request,
   stage 6.
 
+### Amendment 2026-09-23: faults in how the body is declared come just before the body
+
+The table puts every malformed request in stage 1, and most are: a path or
+query that does not decode, an unknown route, a malformed `Authorization`
+or presigned query, both credential forms at once are all answered in the
+authentication middleware before the signature is checked. Two are not,
+and never were: a body sent without `Content-Length`, and a checksum given
+both as `X-Tunna-Checksum` and as the `checksum` query parameter (wire.md
+8). Both are faults in how the body is declared, and the handlers check
+them after every check that does not concern the body, immediately before
+the body is read.
+
+Measured 2026-09-23 with a PUT carrying the checksum in both places: with
+no key it answers `unauthenticated`, with a key that may not write
+`forbidden`, with an invalid object key `invalid_key`, into an unknown
+upload session `upload_not_found`, and only with none of those
+`malformed_request`. Found by an anonymous probe of the deployment that
+expected the malformed answer first.
+
+The code is kept and the table amended: a body-declaration fault belongs
+next to the body. Moving these checks ahead of authentication would put
+route knowledge in the middleware for no benefit a caller can use, since
+every earlier answer is also true of the request. They keep the
+`malformed_request` code, whose stage in `errors.json` is 1; the code says
+what is wrong, and this amendment says when it is found. The rule of thumb
+above gains a clause: a fault in how the body is declared is checked last
+before the body. Conformance: `ladder-body-declaration-faults-come-just-before-the-body`.
+
 ## Probes this record asks for
 
 1. **`Expect: 100-continue` in Go's server.** Send a signed-badly PUT with a

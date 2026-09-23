@@ -44,6 +44,11 @@ Every request passes through six stages. The first stage that fails answers.
 
 Each error code in [`errors.json`](errors.json) belongs to exactly one stage.
 A request with faults at several stages receives the earliest stage's error.
+One qualification [ADR-0004 amendment]: a fault in how the body is
+declared (a body without `Content-Length`, a checksum given in both places)
+is `malformed_request` but is found just before the body is read, after
+every check that does not concern the body. Paired with any earlier fault,
+the earlier one answers.
 
 One thing runs before stage 1: a CORS preflight (section 10.2), which is
 answered from configuration and never reaches the ladder.

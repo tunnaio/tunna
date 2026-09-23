@@ -124,6 +124,39 @@
           "expect": { "status": 204 }
         }
       ]
+    },
+    {
+      "name": "ladder-body-declaration-faults-come-just-before-the-body",
+      "description": "A checksum given in both places is malformed_request, found just before the body is read: every fault that does not concern the body answers first (ADR-0004 amendment). Each step pairs it with one earlier fault; the last has none.",
+      "decision": "ADR-0004",
+      "fixtures": ["alice", "reader", "photos", "empty"],
+      "steps": [
+        {
+          "name": "no-key",
+          "request": { "method": "PUT", "path": ["empty", "a.txt"], "auth": "none", "headers": { "X-Tunna-Checksum": "crc32c=WDy7Mw==" }, "query": [["checksum", "crc32c=WDy7Mw=="]], "body": { "text": "new body" } },
+          "expect": { "error": "unauthenticated" }
+        },
+        {
+          "name": "no-write-access",
+          "request": { "method": "PUT", "path": ["photos", "a.txt"], "auth": { "key": "reader", "signed_headers": ["x-tunna-checksum"] }, "headers": { "X-Tunna-Checksum": "crc32c=WDy7Mw==" }, "query": [["checksum", "crc32c=WDy7Mw=="]], "body": { "text": "new body" } },
+          "expect": { "error": "forbidden" }
+        },
+        {
+          "name": "invalid-key",
+          "request": { "method": "PUT", "path": ["empty", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"], "auth": { "key": "alice", "signed_headers": ["x-tunna-checksum"] }, "headers": { "X-Tunna-Checksum": "crc32c=WDy7Mw==" }, "query": [["checksum", "crc32c=WDy7Mw=="]], "body": { "text": "new body" } },
+          "expect": { "error": "invalid_key" }
+        },
+        {
+          "name": "unknown-session",
+          "request": { "method": "PUT", "path": ["-", "uploads", "up_nope", "parts", "1"], "auth": { "key": "alice", "signed_headers": ["x-tunna-checksum"] }, "headers": { "X-Tunna-Checksum": "crc32c=WDy7Mw==" }, "query": [["checksum", "crc32c=WDy7Mw=="]], "body": { "text": "new body" } },
+          "expect": { "error": "upload_not_found" }
+        },
+        {
+          "name": "nothing-earlier",
+          "request": { "method": "PUT", "path": ["empty", "a.txt"], "auth": { "key": "alice", "signed_headers": ["x-tunna-checksum"] }, "headers": { "X-Tunna-Checksum": "crc32c=WDy7Mw==" }, "query": [["checksum", "crc32c=WDy7Mw=="]], "body": { "text": "new body" } },
+          "expect": { "error": "malformed_request" }
+        }
+      ]
     }
   ]
 }
