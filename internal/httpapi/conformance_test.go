@@ -112,9 +112,10 @@ type auth struct {
 		CorruptSignature  bool     `json:"corrupt_signature"`
 	}
 	Presign *struct {
-		Key              string   `json:"key"`
-		ExpiresInSeconds int64    `json:"expires_in_seconds"`
-		SignedHeaders    []string `json:"signed_headers"`
+		Key              string      `json:"key"`
+		ExpiresInSeconds int64       `json:"expires_in_seconds"`
+		SignedHeaders    []string    `json:"signed_headers"`
+		TamperQuery      [][2]string `json:"tamper_query"`
 	}
 }
 
@@ -282,6 +283,11 @@ func runCase(t *testing.T, srv *httptest.Server, c conformanceCase, statusOf map
 			sigReq.SignedHeaders = a.Presign.SignedHeaders
 			expires := time.Now().Unix() + a.Presign.ExpiresInSeconds
 			requestURL += "?" + sig.PresignQuery(sigReq, key, expires)
+			// Signed as written; then the named values are swapped, so the
+			// server sees a query the signature does not cover.
+			for _, kv := range a.Presign.TamperQuery {
+				requestURL = strings.Replace(requestURL, encode(kv[0])+"="+encode(query.Get(kv[0])), encode(kv[0])+"="+encode(kv[1]), 1)
+			}
 		default:
 			var parts []string
 			for name, values := range query {

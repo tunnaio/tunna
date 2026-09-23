@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Tunna, TunnaError, TransportError } from "../src/index.ts";
 import { authorization } from "../src/wire/sign.ts";
+import { crc32c, encodeChecksum } from "../src/wire/crc32c.ts";
 
 // The request pipeline with an injected fetch: URL, signing, error mapping.
 // The wire itself is covered by the conformance test; this pins what the
@@ -587,17 +588,18 @@ describe("presign provider", () => {
     expect(seen[0]!.init.signal).toBe(signal);
   });
 
-  test("the provider is given the query and the headers the pipeline would have signed, and they are still sent", async () => {
+  test("the provider is given the query and the headers the pipeline would have signed, and they are still sent; the checksum travels in the query", async () => {
     const wire = { bucket: "photos", key: "a.txt", size: 1, content_type: "text/plain", checksum: "crc32c=AAAAAA==", created_at: 1 };
     const { tunna, seen, asked } = page((s) => (s.init.method === "PUT" ? json(201, wire) : json(200, { objects: [] })));
 
     await tunna.objects.put("photos", "a.txt", "x", { contentType: "text/plain", metadata: { title: "t" } });
     const bound = asked[0]!.request.headers ?? {};
-    expect(Object.keys(bound).map((k) => k.toLowerCase()).sort()).toEqual(["content-type", "x-tunna-checksum", "x-tunna-meta-title"]);
+    expect(Object.keys(bound).map((k) => k.toLowerCase()).sort()).toEqual(["content-type", "x-tunna-meta-title"]);
+    expect(asked[0]!.request.query).toEqual([["checksum", encodeChecksum(crc32c(new TextEncoder().encode("x")))]]);
     const sent = new Headers(seen[0]!.init.headers);
     expect(sent.get("Content-Type")).toBe("text/plain");
     expect(sent.get("X-Tunna-Meta-title")).toBe("t");
-    expect(sent.get("X-Tunna-Checksum")).toBe(bound["X-Tunna-Checksum"] ?? null);
+    expect(sent.has("X-Tunna-Checksum")).toBe(false);
 
     await tunna.objects.page("photos", { prefix: "a/", limit: 2 });
     expect([...(asked[1]!.request.query ?? [])].sort()).toEqual([["limit", "2"], ["prefix", "a/"]]);
@@ -650,6 +652,26 @@ describe("presign provider", () => {
     expect(asked[0]!.signal).toBe(signal);
     // The signal is for the call, not part of what gets signed.
     expect("signal" in asked[0]!.request).toBe(false);
+  });
+
+  test("a part PUT through a provider carries no header at all, so a browser sends it without a preflight", async () => {
+    // wire.md 8: the only header a part PUT had was X-Tunna-Checksum, and it
+    // alone forced an OPTIONS round trip per part. In the query it is signed
+    // just the same, and the request is a simple one.
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const { tunna, seen, asked } = page(() => json(200, { part: 1, size: 4, checksum: encodeChecksum(crc32c(bytes)) }));
+    await tunna.uploads.putPart("up_1", 1, bytes);
+    expect(asked[0]!.request.query).toEqual([["checksum", encodeChecksum(crc32c(bytes))]]);
+    expect(Object.keys(asked[0]!.request.headers ?? {})).toEqual([]);
+    expect([...new Headers(seen[0]!.init.headers).keys()]).toEqual([]);
+  });
+
+  test("with a key the checksum stays a header, and the URL has no checksum parameter", async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const { tunna, seen } = client(() => json(200, { part: 1, size: 4, checksum: encodeChecksum(crc32c(bytes)) }));
+    await tunna.uploads.putPart("up_1", 1, bytes);
+    expect(new Headers(seen[0]!.init.headers).get("X-Tunna-Checksum")).toBe(encodeChecksum(crc32c(bytes)));
+    expect(new URL(seen[0]!.url).searchParams.has("checksum")).toBe(false);
   });
 
   test("tunna.presign with an aborted signal rejects in both modes, before anything happens", async () => {

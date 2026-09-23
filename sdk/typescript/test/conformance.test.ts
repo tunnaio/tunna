@@ -40,6 +40,7 @@ type Auth =
         key: string;
         expires_in_seconds: number;
         signed_headers?: string[];
+        tamper_query?: [string, string][];
       };
     };
 
@@ -214,6 +215,12 @@ async function runCase(c: Case): Promise<void> {
           fixtureKey(p.key),
           now + p.expires_in_seconds,
         ));
+      // Signed as written; then the named values are swapped, so the server
+      // sees a query the signature does not cover.
+      for (const [name, value] of p.tamper_query ?? []) {
+        const current = query.find(([n]) => n === name)?.[1] ?? "";
+        url = url.replace(encodeQuery([[name, current]]), encodeQuery([[name, value]]));
+      }
     } else if (query.length > 0) {
       url += "?" + encodeQuery(query);
     }

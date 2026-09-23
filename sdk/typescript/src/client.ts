@@ -379,15 +379,24 @@ export class Tunna {
     const provided = this.#presign !== undefined && !call.anonymous;
     let url: string;
     if (provided) {
+      const checksum = call.headers?.["X-Tunna-Checksum"];
+      const checksumQuery: [string, string][] = [];
+      if (checksum) {
+        checksumQuery.push(["checksum", checksum]);
+      }
+
       const asked: PresignableRequest = {
         method: call.method,
         path: call.path,
       };
       if (call.query) {
-        asked.query = call.query;
+        asked.query = [...call.query, ...checksumQuery];
+      } else if (checksumQuery.length > 0) {
+        asked.query = checksumQuery;
       }
       const bound = boundHeaders(call);
-      if (bound) {
+      if (bound) delete bound["X-Tunna-Checksum"];
+      if (bound && Object.keys(bound).length > 0) {
         asked.headers = bound;
       }
       url = await this.#presign(
@@ -402,6 +411,9 @@ export class Tunna {
     }
 
     const headers = new Headers(call.headers);
+    if (provided) {
+      headers.delete("X-Tunna-Checksum");
+    }
     if (this.#key && !call.anonymous) {
       const now = this.#now();
       headers.set(HEADER_DATE, now.toString());

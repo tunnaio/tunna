@@ -295,23 +295,11 @@ func sigRequest(r *http.Request, signed []string) (sig.Request, error) {
 		}
 	}
 
-	query := url.Values{}
-	for pair := range strings.SplitSeq(r.URL.RawQuery, "&") {
-		if pair == "" {
-			continue
-		}
-
-		name, val, _ := strings.Cut(pair, "=")
-		n, err1 := url.PathUnescape(name)
-		v, err2 := url.PathUnescape(val)
-		if err1 != nil || err2 != nil {
-			return sig.Request{}, errors.Join(err1, err2)
-		}
-		if n == sig.ParamSig {
-			continue
-		}
-		query.Add(n, v)
+	query, err := rawQuery(r)
+	if err != nil {
+		return sig.Request{}, err
 	}
+	query.Del(sig.ParamSig)
 
 	headers := make(map[string]string, len(r.Header))
 	for name, values := range r.Header {

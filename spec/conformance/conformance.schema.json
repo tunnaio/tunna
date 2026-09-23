@@ -75,7 +75,8 @@
               "presign": { "type": "object", "required": ["key", "expires_in_seconds"], "additionalProperties": false, "properties": {
                 "key": { "type": "string" },
                 "expires_in_seconds": { "type": "integer", "description": "Relative to the runner's clock. Negative to provoke presign_expired." },
-                "signed_headers": { "type": "array", "items": { "type": "string" } }
+                "signed_headers": { "type": "array", "items": { "type": "string" } },
+                "tamper_query": { "type": "array", "items": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 }, "description": "Name-value pairs replaced in the URL after it is signed, so the server sees a query the signature does not cover. Use to prove a parameter is bound." }
               } }
             } }
           ]

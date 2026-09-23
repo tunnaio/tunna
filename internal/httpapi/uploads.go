@@ -224,10 +224,19 @@ func (h *handler) putUploadPart(w http.ResponseWriter, r *http.Request) {
 
 	var wantCRC uint32
 	hasChecksum := false
-	if v := r.Header.Get("X-Tunna-Checksum"); v != "" {
-		crc, err := sig.ParseChecksum(v)
+	value, source, err := bodyChecksum(r)
+	switch {
+	case errors.Is(err, errBothChecksums):
+		writeError(w, codeMalformedRequest, "give the checksum as the X-Tunna-Checksum header or as the checksum query parameter, not both", nil)
+		return
+	case err != nil:
+		writeError(w, codeInternal, "reading the request query failed", nil)
+		return
+	}
+	if value != "" {
+		crc, err := sig.ParseChecksum(value)
 		if err != nil {
-			writeError(w, codeInvalidParameter, "X-Tunna-Checksum is not of the form crc32c=<base64>", map[string]any{"name": "X-Tunna-Checksum"})
+			writeError(w, codeInvalidParameter, source+" is not of the form crc32c=<base64>", map[string]any{"name": source})
 			return
 		}
 		wantCRC, hasChecksum = crc, true

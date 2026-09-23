@@ -192,6 +192,36 @@ Harder:
   hashing the concatenated bytes directly, so no combine implementation is
   its own oracle. They do.
 
+### Amendment 2026-09-22: the checksum may travel in the query
+
+On a request with a body, the checksum may be given as the `checksum` query
+parameter instead of the `X-Tunna-Checksum` header, with the same value and
+the same checks. Both at once is `malformed_request`.
+
+The reason is the browser. A cross-origin `PUT` goes out without a
+preflight only if it carries no header outside the safelist, and
+`X-Tunna-Checksum` is outside it. So every presigned part upload from a
+page cost an `OPTIONS` round trip before its bytes moved, and because
+each part has its own presigned URL the browser could cache none of them.
+Measured 2026-09-22 on a 200 MB upload through the console: 35 to 199 ms
+per part, in lockstep across the parts in flight, so the link idled
+between waves. The PUT itself carried nothing else that needs a preflight
+(no `Content-Type` on a part). With the checksum in the query the same PUT
+is a simple request.
+
+It costs nothing in binding: the presigned signature already covers the
+canonical query, so `checksum` is signed exactly as `x-tunna-expires` is,
+with no change to the signer or the canonical form. A conformance case
+edits the parameter after signing and expects `bad_signature`. The
+alternatives were a longer `Access-Control-Max-Age`, which cannot help
+when every URL differs, and dropping the checksum from browser uploads,
+which gives up integrity for speed. Named `checksum`, not
+`x-tunna-checksum`, so it is visibly not one of the four credential
+parameters of the presigned form.
+
+The header stays the form for everything that is not a browser, and the
+SDK sends it in header form and the query in provider mode.
+
 ## Follow-ups this decision creates
 
 - **Wire contract section 8** becomes the definition above; the signing

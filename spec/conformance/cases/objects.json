@@ -150,6 +150,127 @@
       ]
     },
     {
+      "name": "checksum-in-the-query-on-a-presigned-put",
+      "description": "The browser form (wire.md 8): the checksum travels as the checksum query parameter, which the presigned signature binds, and the PUT carries no custom header, so it needs no preflight. Verified like the header.",
+      "decision": "wire.md 8",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "name": "matches",
+          "request": {
+            "method": "PUT", "path": ["empty", "q.txt"],
+            "query": [["checksum", "crc32c=WDy7Mw=="]],
+            "auth": { "presign": { "key": "alice", "expires_in_seconds": 300 } },
+            "body": { "text": "new body" }
+          },
+          "expect": { "status": 201, "json": { "checksum": "crc32c=WDy7Mw==" } }
+        },
+        {
+          "name": "mismatch-stores-nothing",
+          "request": {
+            "method": "PUT", "path": ["empty", "q-bad.txt"],
+            "query": [["checksum", "crc32c=AAAAAA=="]],
+            "auth": { "presign": { "key": "alice", "expires_in_seconds": 300 } },
+            "body": { "text": "new body" }
+          },
+          "expect": { "error": "checksum_mismatch", "json": { "error": { "details": { "algorithm": "crc32c" } } } }
+        },
+        {
+          "name": "nothing-stored",
+          "request": { "method": "GET", "path": ["empty", "q-bad.txt"], "auth": { "key": "alice" } },
+          "expect": { "error": "object_not_found" }
+        },
+        {
+          "name": "malformed-names-the-parameter",
+          "request": {
+            "method": "PUT", "path": ["empty", "q-bad.txt"],
+            "query": [["checksum", "md5=whatever"]],
+            "auth": { "presign": { "key": "alice", "expires_in_seconds": 300 } },
+            "body": { "text": "x" }
+          },
+          "expect": { "error": "invalid_parameter", "json": { "error": { "details": { "name": "checksum" } } } }
+        }
+      ]
+    },
+    {
+      "name": "checksum-in-the-query-is-signed",
+      "description": "The query parameter is part of the canonical query, so a URL presigned for one checksum cannot be reused for another body by editing it: the signature fails, at stage 2, before the body is read.",
+      "decision": "wire.md 8, ADR-0003",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": {
+            "method": "PUT", "path": ["empty", "q.txt"],
+            "query": [["checksum", "crc32c=WDy7Mw=="]],
+            "auth": { "presign": { "key": "alice", "expires_in_seconds": 300, "tamper_query": [["checksum", "crc32c=AAAAAA=="]] } },
+            "body": { "text": "new body" }
+          },
+          "expect": { "error": "bad_signature" }
+        }
+      ]
+    },
+    {
+      "name": "checksum-in-both-header-and-query-is-malformed",
+      "description": "One place for the value. Header and query together is malformed_request even when the two agree, so a client cannot half-migrate and a server never has to pick.",
+      "decision": "wire.md 8",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "request": {
+            "method": "PUT", "path": ["empty", "both.txt"],
+            "query": [["checksum", "crc32c=WDy7Mw=="]],
+            "headers": { "X-Tunna-Checksum": "crc32c=WDy7Mw==" },
+            "auth": { "key": "alice", "signed_headers": ["x-tunna-checksum"] },
+            "body": { "text": "new body" }
+          },
+          "expect": { "error": "malformed_request" }
+        },
+        {
+          "request": { "method": "GET", "path": ["empty", "both.txt"], "auth": { "key": "alice" } },
+          "expect": { "error": "object_not_found" }
+        }
+      ]
+    },
+    {
+      "name": "checksum-in-the-query-on-a-part",
+      "description": "The same on a part PUT, which is what a browser uploads through: the part's checksum is bound by the URL and no header is sent.",
+      "decision": "wire.md 8",
+      "fixtures": ["alice", "empty"],
+      "steps": [
+        {
+          "name": "initiate",
+          "request": { "method": "POST", "path": ["-", "uploads"], "auth": { "key": "alice" }, "body": { "json": { "bucket": "empty", "key": "q.bin", "part_size": 5242880 } } },
+          "expect": { "status": 201 },
+          "capture": { "id": "/id" }
+        },
+        {
+          "name": "part-by-query",
+          "request": {
+            "method": "PUT", "path": ["-", "uploads", "{{id}}", "parts", "1"],
+            "query": [["checksum", "crc32c=16Iysw=="]],
+            "auth": { "presign": { "key": "alice", "expires_in_seconds": 300 } },
+            "body": { "bytes": { "seed": 10, "length": 1024 } }
+          },
+          "expect": { "status": 200, "json": { "part": 1, "checksum": "crc32c=16Iysw==" } }
+        },
+        {
+          "name": "part-mismatch",
+          "request": {
+            "method": "PUT", "path": ["-", "uploads", "{{id}}", "parts", "2"],
+            "query": [["checksum", "crc32c=AAAAAA=="]],
+            "auth": { "presign": { "key": "alice", "expires_in_seconds": 300 } },
+            "body": { "bytes": { "seed": 11, "length": 1024 } }
+          },
+          "expect": { "error": "checksum_mismatch" }
+        },
+        {
+          "name": "complete",
+          "request": { "method": "POST", "path": ["-", "uploads", "{{id}}", "complete"], "auth": { "key": "alice" }, "body": { "json": { "parts": 1 } } },
+          "expect": { "status": 201, "json": { "checksum": "crc32c=16Iysw==" } }
+        }
+      ]
+    },
+    {
       "name": "object-put-unknown-bucket",
       "description": "Stage 6: the bucket must exist. The key is valid, so validation passes and state answers.",
       "decision": "ADR-0004",

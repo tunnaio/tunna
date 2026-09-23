@@ -54,7 +54,10 @@ function fakeServer(opts: { failPart?: { n: number; times: number; how: "throw" 
       const bytes = new Uint8Array(init?.body as ArrayBuffer | Uint8Array);
       state.parts.set(n, bytes);
       const checksum = encodeChecksum(crc32c(bytes));
-      expect(new Headers(init?.headers).get("X-Tunna-Checksum")).toBe(checksum);
+      // The checksum arrives as the header, or in provider mode as the
+      // checksum query parameter of the presigned URL (wire.md 8).
+      const declared = new Headers(init?.headers).get("X-Tunna-Checksum") ?? url.searchParams.get("checksum");
+      expect(declared).toBe(checksum);
       return json(200, { part: n, size: bytes.length, checksum });
     }
     if (method === "POST" && path === "/-/uploads/up_1/complete") {
@@ -239,13 +242,15 @@ describe("upload into a session the backend created", () => {
 
   function pageClient(opts: Parameters<typeof fakeServer>[0] = {}) {
     const { fetch, state } = fakeServer(opts);
-    const asked: { method: string; path: readonly string[]; headers?: Record<string, string> }[] = [];
+    const asked: { method: string; path: readonly string[]; query?: readonly (readonly [string, string])[]; headers?: Record<string, string> }[] = [];
     const tunna = new Tunna({
       url: "http://store.test",
       fetch,
       presign: async (request) => {
         asked.push(request);
-        return `http://store.test/${request.path.join("/")}?x-tunna-sig=made-by-the-backend`;
+        // Like presignRequest: the query goes into the URL, signed.
+        const query = new URLSearchParams(request.query?.map(([k, v]) => [k, v]) ?? []).toString();
+        return `http://store.test/${request.path.join("/")}?${query ? query + "&" : ""}x-tunna-sig=made-by-the-backend`;
       },
     });
     return { tunna, state, asked };
@@ -271,9 +276,11 @@ describe("upload into a session the backend created", () => {
       "PUT /-/uploads/up_1/parts/2",
       "PUT /-/uploads/up_1/parts/3",
     ]);
-    // Each part URL binds that part's checksum, as the header form signs it.
+    // Each part URL binds that part's checksum, in the query, so the PUT
+    // needs no header and the browser sends it without a preflight.
     const part = asked.find((a) => a.path.at(-1) === "3")!;
-    expect(part.headers?.["X-Tunna-Checksum"]).toBe(encodeChecksum(crc32c(data.subarray(2 * partSize))));
+    expect(part.query).toEqual([["checksum", encodeChecksum(crc32c(data.subarray(2 * partSize)))]]);
+    expect(part.headers?.["X-Tunna-Checksum"]).toBeUndefined();
   });
 
   test("without a key and without a session it is refused before anything is sent", async () => {

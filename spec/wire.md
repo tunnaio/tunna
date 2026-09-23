@@ -488,11 +488,12 @@ the combine rule.
 prefixed with the algorithm name: `crc32c=4waSgw==` is the checksum of the
 ASCII string `123456789`.
 
-**Header:** `X-Tunna-Checksum`.
+**Header:** `X-Tunna-Checksum`. **Or, on a request with a body, the query
+parameter `checksum`** with the same value, for the browser (below).
 
 | Where | Meaning |
 |-------|---------|
-| Request with a body (object PUT, part PUT) | Optional. When present it must be in the wire form, may be listed among the signed headers, and the body is rejected with `checksum_mismatch` if its CRC32C differs. Absent means the server computes the value while writing. |
+| Request with a body (object PUT, part PUT) | Optional, as the header or as the `checksum` query parameter. When present it must be in the wire form, and the body is rejected with `checksum_mismatch` if its CRC32C differs. The header may be listed among the signed headers; the query parameter is in the canonical query and so always signed. Both present is `malformed_request`, even when equal. Absent means the server computes the value while writing. |
 | Part PUT response | The part's own checksum. |
 | Complete request body | Optional `checksums`: an array of the per-part wire values in part order. When present, each is checked against what the server recorded; a mismatch is `checksum_mismatch` with `details.part`. |
 | Object GET and HEAD response | The object's checksum, always. |
@@ -501,9 +502,20 @@ ASCII string `123456789`.
 It is strong: the same bytes produce the same value regardless of how they
 were uploaded, single request or parts of any size.
 
-A malformed header value, meaning anything that is not `crc32c=` followed by
-eight base64 characters ending in `==`, is `invalid_parameter` with
-`details.name` set to the header name, at stage 4.
+A malformed value, meaning anything that is not `crc32c=` followed by eight
+base64 characters ending in `==`, is `invalid_parameter` with `details.name`
+set to `X-Tunna-Checksum` or `checksum`, whichever carried it, at stage 4.
+
+**Why the query form exists.** A browser sends a cross-origin `PUT` without
+a preflight only when it carries no header outside the safelisted few, and
+`X-Tunna-Checksum` is outside it. With the checksum in the header, every
+presigned part upload costs an `OPTIONS` round trip first, and since each
+part has its own URL the browser can cache none of them (measured
+2026-09-22: 35 to 199 ms per part, in lockstep across the parts in flight,
+so the link idled between waves). With the checksum in the query, the
+same `PUT` is a simple request and goes straight out, and the signature
+binds the value exactly as it binds the header. The header stays the form
+for everything that is not a browser.
 
 ## 9. Errors
 
