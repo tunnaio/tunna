@@ -80,7 +80,8 @@
         "types": "./dist/xhr.d.cts",
         "default": "./dist/xhr.cjs"
       }
-    }
+    },
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public"

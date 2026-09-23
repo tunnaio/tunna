@@ -4,6 +4,14 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { sign, SPEC_VERSION } = require("../dist/index.cjs");
 
+// Resolved by the package's own name through its exports map, as a tool that
+// reads a dependency's package.json does. Node lets a package refer to itself.
+const own = require("tunna/package.json");
+if (own.name !== "tunna" || typeof own.version !== "string") {
+  console.error("cjs smoke: tunna/package.json is not reachable through exports");
+  process.exit(1);
+}
+
 const vectors = JSON.parse(readFileSync(path.join(__dirname, "..", "..", "..", "spec", "vectors", "signing.json"), "utf8"));
 const c = vectors.cases.find((x) => x.mode === "presign");
 
